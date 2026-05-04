@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init *)",
+      "Bash(echo \"# Panel Calculator\")",
+      "Bash(git add *)",
+      "Bash(git config *)",
+      "Bash(git commit *)",
+      "Bash(dotnet restore *)",
+      "Bash(dotnet build *)"
+    ]
+  }
+}
