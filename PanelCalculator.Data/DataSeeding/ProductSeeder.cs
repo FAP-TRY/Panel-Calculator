@@ -14,72 +14,64 @@ public class ProductSeeder
         _context = context;
     }
 
-    public async Task SeedFromCsvAsync(string csvFilePath)
+    public async Task<int> SeedFromCsvAsync(string csvFilePath)
     {
         if (!File.Exists(csvFilePath))
-        {
             throw new FileNotFoundException($"CSV file not found: {csvFilePath}");
-        }
 
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
-            HeaderValidationMode = HeaderValidationMode.IgnoreCase
+            HeaderValidated   = null,   // Abaikan validasi header
+            MissingFieldFound = null,   // Abaikan kolom yang tidak ada
+            // Normalisasi header: hapus underscore, lowercase → cocok PascalCase property
+            PrepareHeaderForMatch = args => args.Header.Replace("_", "").ToLower(),
         };
 
-        try
+        int importedCount = 0;
+
+        using var reader = new StreamReader(csvFilePath, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        using var csv = new CsvReader(reader, config);
+
+        var records = csv.GetRecords<ProductCsvRecord>().ToList();
+
+        foreach (var record in records)
         {
-            using (var reader = new StreamReader(csvFilePath))
-            using (var csv = new CsvReader(reader, config))
+            if (string.IsNullOrWhiteSpace(record.ReferenceCode)) continue;
+
+            var existing = _context.Products
+                .FirstOrDefault(p => p.ReferenceCode == record.ReferenceCode);
+
+            if (existing != null)
             {
-                var records = csv.GetRecords<ProductCsvRecord>();
-
-                foreach (var record in records)
-                {
-                    // Check if product already exists
-                    var existing = _context.Products
-                        .FirstOrDefault(p => p.ReferenceCode == record.ReferenceCode);
-
-                    if (existing != null)
-                    {
-                        // Update existing
-                        existing.Category = record.Category;
-                        existing.ProductName = record.ProductName;
-                        existing.Specifications = record.Specifications;
-                        existing.Price = record.Price;
-                        existing.StockStatus = record.StockStatus;
-                        existing.Vendor = record.Vendor;
-                        existing.LastUpdated = DateTime.UtcNow;
-
-                        _context.Products.Update(existing);
-                    }
-                    else
-                    {
-                        // Add new
-                        var product = new Product
-                        {
-                            Category = record.Category,
-                            ReferenceCode = record.ReferenceCode,
-                            ProductName = record.ProductName,
-                            Specifications = record.Specifications,
-                            Price = record.Price,
-                            StockStatus = record.StockStatus,
-                            Vendor = record.Vendor,
-                            LastUpdated = DateTime.UtcNow
-                        };
-
-                        _context.Products.Add(product);
-                    }
-                }
-
-                await _context.SaveChangesAsync();
-                Console.WriteLine($"✓ Successfully seeded {records.Count()} products");
+                existing.Category      = record.Category;
+                existing.ProductName   = record.ProductName;
+                existing.Specifications = record.Specifications;
+                existing.Price         = record.Price;
+                existing.StockStatus   = record.StockStatus;
+                existing.Vendor        = record.Vendor;
+                existing.LastUpdated   = DateTime.UtcNow;
+                _context.Products.Update(existing);
             }
+            else
+            {
+                _context.Products.Add(new Product
+                {
+                    Category      = record.Category,
+                    ReferenceCode = record.ReferenceCode,
+                    ProductName   = record.ProductName,
+                    Specifications = record.Specifications,
+                    Price         = record.Price,
+                    StockStatus   = record.StockStatus,
+                    Vendor        = record.Vendor,
+                    LastUpdated   = DateTime.UtcNow
+                });
+            }
+
+            importedCount++;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"✗ Error seeding products: {ex.Message}");
-            throw;
-        }
+
+        await _context.SaveChangesAsync();
+        return importedCount;
     }
 
     public class ProductCsvRecord

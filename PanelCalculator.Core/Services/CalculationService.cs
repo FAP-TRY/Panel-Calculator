@@ -27,31 +27,18 @@ public class CalculationService : ICalculationService
 
     public decimal ApplyMargin(decimal subtotal, decimal marginPercent)
     {
-        if (subtotal < 0)
-            throw new ArgumentException("SubTotal must be non-negative");
-
-        if (marginPercent < 0)
-            throw new ArgumentException("Margin percent must be non-negative");
-
+        // Allow negative marginPercent for discount scenarios
         return subtotal * (marginPercent / 100m);
     }
 
     public decimal CalculateTax(decimal subtotal, decimal taxPercent)
     {
-        if (subtotal < 0)
-            throw new ArgumentException("SubTotal must be non-negative");
-
-        if (taxPercent < 0)
-            throw new ArgumentException("Tax percent must be non-negative");
-
         return subtotal * (taxPercent / 100m);
     }
 
     public decimal CalculateFinalPrice(decimal subtotal, decimal margin, decimal tax, decimal shippingCost)
     {
-        if (subtotal < 0 || margin < 0 || tax < 0 || shippingCost < 0)
-            throw new ArgumentException("All values must be non-negative");
-
+        // margin can be negative (discount), tax can include PPh deduction
         return subtotal + margin + tax + shippingCost;
     }
 

@@ -16,9 +16,15 @@ public class Estimation
 
     public decimal ShippingCost { get; set; }
 
-    public decimal Margin { get; set; } // % atau Rp
+    public decimal MarginPercent { get; set; } = 0m; // overall margin/discount percent (negative = diskon)
 
-    public decimal Tax { get; set; } // PPN 11%
+    public decimal Margin { get; set; } // nilai margin/diskon
+
+    public decimal Tax { get; set; } // PPN
+
+    public decimal PPhPercent { get; set; } = 0m;
+
+    public decimal PPh { get; set; } = 0m; // nilai PPh ditahan
 
     public decimal TotalPrice { get; set; }
 
