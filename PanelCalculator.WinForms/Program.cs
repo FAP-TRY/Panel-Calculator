@@ -93,17 +93,28 @@ static class Program
     {
         try
         {
-            if (!context.Users.Any())
+            var correctHash = HashPassword("admin");
+            var oldHash     = HashPassword("admin123");
+
+            var existing = context.Users.FirstOrDefault(u => u.Username == "admin");
+            if (existing == null)
             {
+                // First run – create default admin
                 context.Users.Add(new User
                 {
                     Username     = "admin",
-                    PasswordHash = HashPassword("admin123"),
+                    PasswordHash = correctHash,
                     FullName     = "Administrator",
                     Role         = "Admin",
                     IsActive     = true,
                     CreatedDate  = DateTime.UtcNow
                 });
+                context.SaveChanges();
+            }
+            else if (existing.PasswordHash == oldHash)
+            {
+                // Migrate old "admin123" → "admin"
+                existing.PasswordHash = correctHash;
                 context.SaveChanges();
             }
         }

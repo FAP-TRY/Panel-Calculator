@@ -132,9 +132,11 @@ public class LoginForm : Form
 
         try
         {
-            var hash = HashPassword(password);
+            var hash            = HashPassword(password);
+            var usernameLower   = username.ToLower();
+            // Username: case-insensitive | Password hash: exact match
             var user = _context.Users.FirstOrDefault(u =>
-                u.Username == username && u.PasswordHash == hash && u.IsActive);
+                u.Username.ToLower() == usernameLower && u.PasswordHash == hash && u.IsActive);
 
             if (user == null)
             {
