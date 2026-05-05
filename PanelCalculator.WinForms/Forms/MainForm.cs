@@ -32,6 +32,8 @@ public partial class MainForm : Form
     private TextBox   txtSearch    = null!;
     private ComboBox  cmbCategory  = null!;
 
+    private ComboBox cmbTargetSection = null!; // which section new items go to
+
     private Label lblSubTotal = null!, lblMarginAmt = null!, lblShipping = null!;
     private Label lblTax = null!, lblPPh = null!, lblTotal = null!;
     private Label lblOverallAdjTitle = null!;   // updated dynamically
@@ -273,9 +275,48 @@ public partial class MainForm : Form
         parent.BackColor = AppTheme.Background;
         parent.Padding   = new Padding(8, 12, 8, 8);
 
+        // ── Title row with "Tambah ke:" section selector ──────────────────
+        var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 34, BackColor = Color.Transparent };
+
         var lblTitle = AppTheme.MakeLabel("Item Estimasi", AppTheme.FontBold, AppTheme.TextPrimary);
-        lblTitle.Dock   = DockStyle.Top;
-        lblTitle.Height = 28;
+        lblTitle.Location  = new Point(0, 7);
+        lblTitle.AutoSize  = true;
+
+        var lblTambahKe = AppTheme.MakeLabel("Tambah ke:", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblTambahKe.Location = new Point(130, 9);
+        lblTambahKe.AutoSize = true;
+
+        cmbTargetSection = new ComboBox
+        {
+            Location      = new Point(205, 4),
+            Width         = 180,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font          = AppTheme.FontBase
+        };
+        AppTheme.StyleComboBox(cmbTargetSection);
+        cmbTargetSection.Items.AddRange(Sections);
+        cmbTargetSection.SelectedIndex = 0; // default: Material Utama
+
+        // Color dot indicator on the left of the dropdown
+        cmbTargetSection.DrawMode = DrawMode.OwnerDrawFixed;
+        cmbTargetSection.DrawItem += (s, e) =>
+        {
+            if (e.Index < 0) return;
+            e.DrawBackground();
+            var section = Sections[e.Index];
+            var dotColor = section switch
+            {
+                "Material Utama"     => Color.FromArgb(37,  99,  235),
+                "Material Pendukung" => Color.FromArgb(202, 138, 4),
+                _                   => Color.FromArgb(22,  163, 74)
+            };
+            using var dotBrush = new SolidBrush(dotColor);
+            e.Graphics.FillEllipse(dotBrush, e.Bounds.X + 4, e.Bounds.Y + (e.Bounds.Height - 8) / 2, 8, 8);
+            using var textBrush = new SolidBrush(e.ForeColor);
+            e.Graphics.DrawString(section, e.Font!, textBrush, e.Bounds.X + 18, e.Bounds.Y + 2);
+        };
+
+        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection });
 
         dgvItems = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgvItems);
@@ -351,7 +392,7 @@ public partial class MainForm : Form
             col.SortMode = DataGridViewColumnSortMode.NotSortable;
 
         parent.Controls.Add(dgvItems);
-        parent.Controls.Add(lblTitle);
+        parent.Controls.Add(pnlHeader);
     }
 
     // ── RIGHT PANEL: Cost Summary ─────────────────────────────────────────
@@ -611,7 +652,10 @@ public partial class MainForm : Form
         var price   = row.Cells["ColPrice"].Value is decimal p ? p : 0m;
         var prodId  = row.Cells["ColProductId"].Value is int id ? id : 0;
 
-        var existing = _currentItems.FirstOrDefault(i => i.ProductId == prodId);
+        var targetSection = cmbTargetSection.SelectedItem?.ToString() ?? "Material Utama";
+
+        // If same product already in the SAME section → add qty, else add new row
+        var existing = _currentItems.FirstOrDefault(i => i.ProductId == prodId && i.Section == targetSection);
         if (existing != null)
         {
             existing.Quantity++;
@@ -626,7 +670,7 @@ public partial class MainForm : Form
                 UnitPrice     = price,
                 Quantity      = 1,
                 AdjPercent    = 0m,
-                Section       = "Material Utama"
+                Section       = targetSection
             });
         }
 
