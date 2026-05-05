@@ -64,12 +64,13 @@ public class EstimationHistoryForm : Form
         dgv = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgv);
         dgv.ReadOnly = true;
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNo",     HeaderText = "No. Estimasi",  FillWeight = 20 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColClient", HeaderText = "Klien",         FillWeight = 30 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColDate",   HeaderText = "Tanggal",       FillWeight = 16 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColStatus", HeaderText = "Status",        FillWeight = 12 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTotal",  HeaderText = "Total Harga",   FillWeight = 20, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColId",     Visible = false });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNo",      HeaderText = "No. Estimasi",  FillWeight = 18 });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColClient",  HeaderText = "Klien",         FillWeight = 20 });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColCompany", HeaderText = "Perusahaan",    FillWeight = 20 });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColDate",    HeaderText = "Tanggal",       FillWeight = 14 });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColStatus",  HeaderText = "Status",        FillWeight = 10 });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTotal",   HeaderText = "Total Harga",   FillWeight = 18, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColId",      Visible = false });
         dgv.CellDoubleClick += Dgv_CellDoubleClick;
 
         // Bottom buttons
@@ -132,6 +133,7 @@ public class EstimationHistoryForm : Form
             var rowIdx = dgv.Rows.Add(
                 est.EstimationNumber,
                 est.ClientName,
+                est.Company ?? "",
                 est.CreatedDate.ToLocalTime().ToString("dd MMM yyyy"),
                 est.Status,
                 "Rp " + est.TotalPrice.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("id-ID")),

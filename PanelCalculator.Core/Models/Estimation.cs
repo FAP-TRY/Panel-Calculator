@@ -14,6 +14,12 @@ public class Estimation
 
     public string? Address { get; set; }
 
+    /// <summary>Nama panel/produk yang dikerjakan, e.g. "Panel MDP 3-Phase 400A"</summary>
+    public string? ProjectName { get; set; }
+
+    /// <summary>Perkiraan tanggal pemesanan oleh klien</summary>
+    public DateTime? EstimatedOrderDate { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
     public string? Notes { get; set; }

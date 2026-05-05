@@ -43,6 +43,16 @@ public partial class MainForm : Form
     private NumericUpDown numTax      = null!;
     private NumericUpDown numPPh      = null!;
 
+    // ── Client info fields (live in summary panel, no dialog) ────────────
+    private TextBox        txtClientName    = null!;
+    private TextBox        txtContactPhone  = null!;
+    private TextBox        txtCompany       = null!;
+    private TextBox        txtAddress       = null!;
+    private TextBox        txtProjectName   = null!;
+    private TextBox        txtNotes         = null!;
+    private DateTimePicker dtpCreatedDate   = null!;
+    private DateTimePicker dtpEstOrderDate  = null!;
+
     private Button btnSave = null!, btnNew = null!, btnHistory = null!;
     private Button btnExport = null!, btnReports = null!, btnSettings = null!;
     private Label  lblStatus = null!;
@@ -391,18 +401,49 @@ public partial class MainForm : Form
         parent.Controls.Add(pnlHeader);
     }
 
-    // ── RIGHT PANEL: Cost Summary ─────────────────────────────────────────
+    // ── RIGHT PANEL: Info Estimasi + Cost Summary ─────────────────────────
     private void BuildSummaryPanel(Panel parent)
     {
         parent.BackColor = AppTheme.SidebarBg;
         parent.Padding   = new Padding(12);
 
-        var lblTitle = AppTheme.MakeLabel("Ringkasan Biaya", AppTheme.FontBold, AppTheme.TextPrimary);
-        lblTitle.Dock   = DockStyle.Top;
-        lblTitle.Height = 32;
-
         var pnlSummary = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
         int y = 0;
+
+        // ════ INFO ESTIMASI ══════════════════════════════════════════════
+        var lblInfoHead = AppTheme.MakeLabel("INFO ESTIMASI", AppTheme.FontBold, AppTheme.Primary);
+        lblInfoHead.Location = new Point(0, y); y += 24;
+        pnlSummary.Controls.Add(lblInfoHead);
+
+        txtClientName   = AddInfoField(pnlSummary, ref y, "Nama Klien *",     "Contoh: Budi Santoso");
+        txtCompany      = AddInfoField(pnlSummary, ref y, "Perusahaan",        "Nama perusahaan / instansi");
+        txtContactPhone = AddInfoField(pnlSummary, ref y, "No Kontak",         "08xx-xxxx-xxxx");
+        txtProjectName  = AddInfoField(pnlSummary, ref y, "Nama Produk",       "Panel MDP 3-Phase 400A");
+        txtAddress      = AddInfoField(pnlSummary, ref y, "Alamat",            "Alamat pengiriman");
+
+        // Tanggal Pembuatan
+        var lblCreated = AppTheme.MakeLabel("Tgl. Pembuatan", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblCreated.Location = new Point(0, y);
+        pnlSummary.Controls.Add(lblCreated); y += 17;
+        dtpCreatedDate = new DateTimePicker { Location = new Point(0, y), Width = 200, Format = DateTimePickerFormat.Short, Value = DateTime.Today, Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+        pnlSummary.Controls.Add(dtpCreatedDate); y += 30;
+
+        // Estimasi Pemesanan
+        var lblEstOrder = AppTheme.MakeLabel("Est. Pemesanan", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblEstOrder.Location = new Point(0, y);
+        pnlSummary.Controls.Add(lblEstOrder); y += 17;
+        dtpEstOrderDate = new DateTimePicker { Location = new Point(0, y), Width = 200, Format = DateTimePickerFormat.Short, Value = DateTime.Today.AddDays(14), Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+        pnlSummary.Controls.Add(dtpEstOrderDate); y += 30;
+
+        txtNotes = AddInfoField(pnlSummary, ref y, "Catatan",  "Catatan tambahan...");
+
+        AddSeparator(pnlSummary, ref y);
+        y += 4;
+
+        // ════ RINGKASAN BIAYA ════════════════════════════════════════════
+        var lblTitle = AppTheme.MakeLabel("RINGKASAN BIAYA", AppTheme.FontBold, AppTheme.TextSecondary);
+        lblTitle.Location = new Point(0, y); y += 24;
+        pnlSummary.Controls.Add(lblTitle);
 
         // SubTotal
         AddSummaryRow(pnlSummary, ref y, "Subtotal:", ref lblSubTotal);
@@ -525,7 +566,26 @@ public partial class MainForm : Form
         pnlSummary.Controls.Add(btnSave);
 
         parent.Controls.Add(pnlSummary);
-        parent.Controls.Add(lblTitle);
+    }
+
+    private TextBox AddInfoField(Panel parent, ref int y, string label, string placeholder = "")
+    {
+        var lbl = AppTheme.MakeLabel(label, AppTheme.FontSmall, AppTheme.TextSecondary);
+        lbl.Location = new Point(0, y);
+        parent.Controls.Add(lbl);
+        y += 17;
+        var tb = new TextBox
+        {
+            Location        = new Point(0, y),
+            Width           = 200,
+            PlaceholderText = placeholder,
+            Font            = AppTheme.FontBase,
+            Anchor          = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+        AppTheme.StyleTextBox(tb);
+        parent.Controls.Add(tb);
+        y += 30;
+        return tb;
     }
 
     private void AddSummaryRow(Panel parent, ref int y, string label, ref Label valueLabel)
@@ -770,6 +830,16 @@ public partial class MainForm : Form
             if (result != DialogResult.Yes) return;
         }
         _currentItems.Clear();
+        // Clear client info fields
+        txtClientName.Clear();
+        txtContactPhone.Clear();
+        txtCompany.Clear();
+        txtAddress.Clear();
+        txtProjectName.Clear();
+        txtNotes.Clear();
+        dtpCreatedDate.Value  = DateTime.Today;
+        dtpEstOrderDate.Value = DateTime.Today.AddDays(14);
+
         RefreshItemsGrid();
         RecalcSummary();
         SetStatus("Estimasi baru dimulai.");
@@ -795,34 +865,42 @@ public partial class MainForm : Form
             return;
         }
 
-        using var dlg = new SaveEstimationDialog();
-        if (dlg.ShowDialog() != DialogResult.OK) return;
+        // Validate required field
+        if (string.IsNullOrWhiteSpace(txtClientName.Text))
+        {
+            MessageBox.Show("Nama Klien tidak boleh kosong.", "Perhatian",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            txtClientName.Focus();
+            return;
+        }
 
-        var today    = DateTime.Now;
-        var existing = await _estimationRepo.GetByDateRangeAsync(today.Date, today.Date.AddDays(1));
-        var seq      = (existing.Count() + 1).ToString("D3");
+        var today     = DateTime.Now;
+        var existing  = await _estimationRepo.GetByDateRangeAsync(today.Date, today.Date.AddDays(1));
+        var seq       = (existing.Count() + 1).ToString("D3");
         var estNumber = $"EST-{today:yyyyMMdd}-{seq}";
 
         var (subtotal, overallAdjAmt, ppnAmt, pphAmt, total) = CalcAll();
 
         var estimation = new Estimation
         {
-            EstimationNumber = estNumber,
-            ClientName       = dlg.ClientName,
-            ContactPhone     = dlg.ContactPhone,
-            Company          = dlg.Company,
-            Address          = dlg.Address,
-            Notes            = dlg.Notes,
-            SubTotal         = subtotal,
-            MarginPercent    = _marginPercent,
-            Margin           = overallAdjAmt,
-            ShippingCost     = _shippingCost,
-            Tax              = ppnAmt,
-            PPhPercent       = _pphPercent,
-            PPh              = pphAmt,
-            TotalPrice       = total,
-            Status           = "Draft",
-            CreatedDate      = DateTime.UtcNow
+            EstimationNumber  = estNumber,
+            ClientName        = txtClientName.Text.Trim(),
+            ContactPhone      = txtContactPhone.Text.Trim(),
+            Company           = txtCompany.Text.Trim(),
+            Address           = txtAddress.Text.Trim(),
+            ProjectName       = txtProjectName.Text.Trim(),
+            Notes             = txtNotes.Text.Trim(),
+            SubTotal          = subtotal,
+            MarginPercent     = _marginPercent,
+            Margin            = overallAdjAmt,
+            ShippingCost      = _shippingCost,
+            Tax               = ppnAmt,
+            PPhPercent        = _pphPercent,
+            PPh               = pphAmt,
+            TotalPrice        = total,
+            Status            = "Draft",
+            CreatedDate       = dtpCreatedDate.Value.ToUniversalTime(),
+            EstimatedOrderDate = dtpEstOrderDate.Value.ToUniversalTime()
         };
 
         estimation.Details = _currentItems.Select(item => new EstimationDetail
@@ -838,7 +916,7 @@ public partial class MainForm : Form
 
         await _estimationRepo.AddAsync(estimation);
         MessageBox.Show($"Estimasi {estNumber} berhasil disimpan!", "Tersimpan", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        SetStatus($"✓ Disimpan: {estNumber} untuk {dlg.ClientName}");
+        SetStatus($"✓ Disimpan: {estNumber} untuk {txtClientName.Text.Trim()}");
     }
 
     private void BtnExport_Click(object? sender, EventArgs e)
@@ -1056,6 +1134,22 @@ public partial class MainForm : Form
             _shippingCost     = numShipping.Value;
             numPPh.Value      = Math.Clamp(est.PPhPercent, numPPh.Minimum, numPPh.Maximum);
             _pphPercent       = numPPh.Value;
+        }
+        catch { }
+
+        // Restore client info fields
+        txtClientName.Text   = est.ClientName;
+        txtContactPhone.Text = est.ContactPhone ?? "";
+        txtCompany.Text      = est.Company      ?? "";
+        txtAddress.Text      = est.Address      ?? "";
+        txtProjectName.Text  = est.ProjectName  ?? "";
+        txtNotes.Text        = est.Notes        ?? "";
+        try
+        {
+            dtpCreatedDate.Value  = est.CreatedDate.ToLocalTime();
+            dtpEstOrderDate.Value = est.EstimatedOrderDate.HasValue
+                ? est.EstimatedOrderDate.Value.ToLocalTime()
+                : DateTime.Today.AddDays(14);
         }
         catch { }
 
