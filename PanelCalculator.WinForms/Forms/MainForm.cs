@@ -289,31 +289,22 @@ public partial class MainForm : Form
         cmbTargetSection = new ComboBox
         {
             Location      = new Point(205, 4),
-            Width         = 180,
+            Width         = 190,
             DropDownStyle = ComboBoxStyle.DropDownList,
             Font          = AppTheme.FontBase
         };
         AppTheme.StyleComboBox(cmbTargetSection);
         cmbTargetSection.Items.AddRange(Sections);
         cmbTargetSection.SelectedIndex = 0; // default: Material Utama
-
-        // Color dot indicator on the left of the dropdown
-        cmbTargetSection.DrawMode = DrawMode.OwnerDrawFixed;
-        cmbTargetSection.DrawItem += (s, e) =>
+        // Update background color to match selected section
+        cmbTargetSection.SelectedIndexChanged += (s, e) =>
         {
-            if (e.Index < 0) return;
-            e.DrawBackground();
-            var section = Sections[e.Index];
-            var dotColor = section switch
+            cmbTargetSection.BackColor = cmbTargetSection.SelectedIndex switch
             {
-                "Material Utama"     => Color.FromArgb(37,  99,  235),
-                "Material Pendukung" => Color.FromArgb(202, 138, 4),
-                _                   => Color.FromArgb(22,  163, 74)
+                1 => Color.FromArgb(254, 249, 195), // Material Pendukung – kuning
+                2 => Color.FromArgb(220, 252, 231), // Material Lainnya   – hijau
+                _ => Color.White                    // Material Utama
             };
-            using var dotBrush = new SolidBrush(dotColor);
-            e.Graphics.FillEllipse(dotBrush, e.Bounds.X + 4, e.Bounds.Y + (e.Bounds.Height - 8) / 2, 8, 8);
-            using var textBrush = new SolidBrush(e.ForeColor);
-            e.Graphics.DrawString(section, e.Font!, textBrush, e.Bounds.X + 18, e.Bounds.Y + 2);
         };
 
         pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection });
