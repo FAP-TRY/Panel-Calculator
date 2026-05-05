@@ -17,6 +17,9 @@ public class EstimationDetail
     /// <summary>Per-item adjustment: positive = markup %, negative = discount %</summary>
     public decimal AdjPercent { get; set; } = 0m;
 
+    /// <summary>Unit of measurement, e.g. pcs, set, meter, rol</summary>
+    public string Satuan { get; set; } = "pcs";
+
     /// <summary>Material Utama | Material Pendukung | Material Lainnya</summary>
     public string Section { get; set; } = "Material Utama";
 

@@ -102,8 +102,8 @@ public partial class MainForm : Form
             AutoSize  = false,
             Width     = 220,
             Dock      = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding   = new Padding(16, 0, 0, 0)
+            TextAlign = ContentAlignment.TopLeft,
+            Padding   = new Padding(16, 14, 0, 0)
         };
         toolbar.Controls.Add(lblAppTitle, 0, 0);
 
@@ -337,6 +337,11 @@ public partial class MainForm : Form
         dgvItems.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "ColItemQty", HeaderText = "Qty", FillWeight = 7,
+            DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter }
+        });
+        dgvItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "ColItemSatuan", HeaderText = "Satuan", FillWeight = 8,
             DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter }
         });
         dgvItems.Columns.Add(new DataGridViewTextBoxColumn
@@ -697,6 +702,13 @@ public partial class MainForm : Form
             if (int.TryParse(row.Cells["ColItemQty"].Value?.ToString(), out var qty) && qty > 0)
                 item.Quantity = qty;
         }
+        else if (e.ColumnIndex == dgvItems.Columns["ColItemSatuan"].Index)
+        {
+            var satuan = row.Cells["ColItemSatuan"].Value?.ToString() ?? "pcs";
+            item.Satuan = string.IsNullOrWhiteSpace(satuan) ? "pcs" : satuan.Trim();
+            _refreshing = false; // no grid refresh needed for Satuan change
+            return;
+        }
         else if (e.ColumnIndex == dgvItems.Columns["ColItemAdj"].Index)
         {
             if (decimal.TryParse(row.Cells["ColItemAdj"].Value?.ToString(), out var adj))
@@ -786,9 +798,6 @@ public partial class MainForm : Form
         using var dlg = new SaveEstimationDialog();
         if (dlg.ShowDialog() != DialogResult.OK) return;
 
-        var clientName = dlg.ClientName;
-        var notes      = dlg.Notes;
-
         var today    = DateTime.Now;
         var existing = await _estimationRepo.GetByDateRangeAsync(today.Date, today.Date.AddDays(1));
         var seq      = (existing.Count() + 1).ToString("D3");
@@ -799,8 +808,11 @@ public partial class MainForm : Form
         var estimation = new Estimation
         {
             EstimationNumber = estNumber,
-            ClientName       = clientName,
-            Notes            = notes,
+            ClientName       = dlg.ClientName,
+            ContactPhone     = dlg.ContactPhone,
+            Company          = dlg.Company,
+            Address          = dlg.Address,
+            Notes            = dlg.Notes,
             SubTotal         = subtotal,
             MarginPercent    = _marginPercent,
             Margin           = overallAdjAmt,
@@ -817,6 +829,7 @@ public partial class MainForm : Form
         {
             ProductId      = item.ProductId,
             Quantity       = item.Quantity,
+            Satuan         = item.Satuan,
             UnitPrice      = item.UnitPrice,
             AdjPercent     = item.AdjPercent,
             Section        = item.Section,
@@ -825,7 +838,7 @@ public partial class MainForm : Form
 
         await _estimationRepo.AddAsync(estimation);
         MessageBox.Show($"Estimasi {estNumber} berhasil disimpan!", "Tersimpan", MessageBoxButtons.OK, MessageBoxIcon.Information);
-        SetStatus($"✓ Disimpan: {estNumber} untuk {clientName}");
+        SetStatus($"✓ Disimpan: {estNumber} untuk {dlg.ClientName}");
     }
 
     private void BtnExport_Click(object? sender, EventArgs e)
@@ -853,13 +866,16 @@ public partial class MainForm : Form
             var lineItems = _currentItems
                 .Select(i => new PdfQuotationExport.LineItem(
                     i.ReferenceCode, i.ProductName, i.Section, i.Quantity,
-                    i.UnitPrice, i.AdjPercent, i.LineTotal))
+                    i.Satuan, i.UnitPrice, i.AdjPercent, i.LineTotal))
                 .ToList();
 
             PdfQuotationExport.Generate(
                 outputPath:       sfd.FileName,
                 estimationNumber: $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
                 clientName:       "—",
+                contactPhone:     null,
+                company:          null,
+                address:          null,
                 createdDate:      DateTime.Now,
                 notes:            "",
                 items:            lineItems,
@@ -943,7 +959,7 @@ public partial class MainForm : Form
             if (sectionItems.Count == 0)
             {
                 int pIdx = dgvItems.Rows.Add("", "— Belum ada item. Klik 2x produk untuk menambahkan —",
-                    "", "", "", "", "");
+                    "", "", "", "", "", "");
                 var pRow = dgvItems.Rows[pIdx];
                 pRow.ReadOnly = true;
                 pRow.DefaultCellStyle.BackColor = rowBg;
@@ -959,10 +975,11 @@ public partial class MainForm : Form
                 int rIdx = dgvItems.Rows.Add(
                     item.ReferenceCode,
                     item.ProductName,
-                    item.Section,       // ComboBox column value
+                    item.Section,           // ComboBox column value
                     item.Quantity,
+                    item.Satuan,            // unit of measure
                     FormatRupiah(item.UnitPrice),
-                    item.AdjPercent,   // raw decimal → formatted via CellFormatting
+                    item.AdjPercent,        // raw decimal → formatted via CellFormatting
                     FormatRupiah(item.LineTotal)
                 );
                 var iRow = dgvItems.Rows[rIdx];
@@ -1020,6 +1037,7 @@ public partial class MainForm : Form
                 ProductName   = d.Product?.ProductName ?? "",
                 UnitPrice     = d.UnitPrice,
                 Quantity      = d.Quantity,
+                Satuan        = string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
                 AdjPercent    = d.AdjPercent,
                 Section       = string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section
             });
@@ -1079,6 +1097,9 @@ public class EstimationLineItem
     public string  ProductName   { get; set; } = "";
     public decimal UnitPrice     { get; set; }
     public int     Quantity      { get; set; } = 1;
+
+    /// <summary>Unit of measurement, manually entered (e.g. pcs, set, meter, rol)</summary>
+    public string  Satuan        { get; set; } = "pcs";
 
     /// <summary>Per-item adjustment: positive = markup %, negative = diskon %</summary>
     public decimal AdjPercent { get; set; } = 0m;

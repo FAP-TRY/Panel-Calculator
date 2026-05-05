@@ -7,7 +7,27 @@
       "Bash(git config *)",
       "Bash(git commit *)",
       "Bash(dotnet restore *)",
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Bash(where python *)",
+      "Bash(where python3 *)",
+      "Bash(where py *)",
+      "Bash(python -c \"import pdfplumber\")",
+      "Bash(python -m pip install pdfplumber pandas)",
+      "Bash(python pdf_parser.py \"C:\\\\Users\\\\FA\\\\Downloads\\\\Final distribution product schneider.pdf\" \"C:\\\\Projects\\\\Panel Calculator\\\\PanelCalculator.Tools\\\\products.csv\")",
+      "Bash(python pdf_parser.py \"C:\\\\Users\\\\FA\\\\Downloads\\\\Final distribution product schneider.pdf\" products.csv)",
+      "Bash(dotnet run *)",
+      "Bash(taskkill /F /IM PanelCalculator.WinForms.exe)",
+      "Bash(taskkill /F /PID 17528)",
+      "Bash(Start-Sleep -Seconds 2)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(taskkill /F /PID 28892)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(taskkill /F /PID 26040)",
+      "Bash(Stop-Process -Name PanelCalculator.WinForms -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Name PanelCalculator.WinForms -Force -ErrorAction SilentlyContinue)",
+      "Bash(start \"\" \"bin\\\\Debug\\\\net8.0-windows\\\\PanelCalculator.WinForms.exe\")",
+      "PowerShell(Set-Location \"C:\\\\Projects\\\\Panel Calculator\\\\PanelCalculator.WinForms\"; $p = Start-Process -FilePath \"bin\\\\Debug\\\\net8.0-windows\\\\PanelCalculator.WinForms.exe\" -Wait -PassThru -NoNewWindow; Write-Output \"Exit code: $\\($p.ExitCode\\)\")"
     ]
   }
 }

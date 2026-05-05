@@ -82,9 +82,9 @@ public class ShellForm : Form
             ForeColor = Color.White,
             AutoSize  = false,
             Dock      = DockStyle.Left,
-            Width     = 400,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding   = new Padding(16, 0, 0, 0)
+            Width     = 420,
+            TextAlign = ContentAlignment.TopLeft,
+            Padding   = new Padding(16, 12, 0, 0)
         };
 
         var lblUserInfo = new Label

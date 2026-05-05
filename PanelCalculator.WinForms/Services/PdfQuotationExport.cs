@@ -27,6 +27,9 @@ public static class PdfQuotationExport
         string outputPath,
         string estimationNumber,
         string clientName,
+        string? contactPhone,
+        string? company,
+        string? address,
         DateTime createdDate,
         string notes,
         IReadOnlyList<LineItem> items,
@@ -78,7 +81,13 @@ public static class PdfQuotationExport
 
         var clientCell = new Cell().SetBorder(Border.NO_BORDER)
             .Add(new Paragraph("KEPADA YTH.").SetFont(fontBold).SetFontSize(8).SetFontColor(ColorMuted).SetMarginBottom(2))
-            .Add(new Paragraph(clientName).SetFont(fontBold).SetFontSize(12).SetFontColor(ColorDark));
+            .Add(new Paragraph(clientName).SetFont(fontBold).SetFontSize(12).SetFontColor(ColorDark).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(company))
+            clientCell.Add(new Paragraph(company).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorDark).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(address))
+            clientCell.Add(new Paragraph(address).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(contactPhone))
+            clientCell.Add(new Paragraph(contactPhone).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted).SetMarginBottom(1));
         if (!string.IsNullOrWhiteSpace(notes))
             clientCell.Add(new Paragraph(notes).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted));
         infoTable.AddCell(clientCell);
@@ -91,11 +100,11 @@ public static class PdfQuotationExport
         document.Add(infoTable);
 
         // ── ITEMS TABLE (grouped by section) ─────────────────────────────
-        float[] colWidths = { 5, 12, 38, 10, 12, 8, 15 };
+        float[] colWidths = { 5, 11, 32, 7, 8, 12, 7, 18 };
         var itemsTable = new Table(UnitValue.CreatePercentArray(colWidths))
             .UseAllAvailableWidth().SetMarginBottom(20);
 
-        string[] headers = { "No", "Kode", "Nama Produk", "Qty", "Harga Satuan", "Adj", "Total" };
+        string[] headers = { "No", "Kode", "Nama Produk", "Qty", "Satuan", "Harga Satuan", "Adj", "Total" };
         foreach (var h in headers)
         {
             itemsTable.AddHeaderCell(
@@ -118,8 +127,8 @@ public static class PdfQuotationExport
                 .SetFont(fontBold).SetFontSize(9).SetFontColor(ColorAccentBlue);
             var secTotal = sectionItems.Sum(i => i.LineTotal);
 
-            // Use first 6 cols merged for label, last col for subtotal
-            for (int c = 0; c < 6; c++)
+            // Use first 7 cols merged for label, last col for subtotal
+            for (int c = 0; c < 7; c++)
             {
                 var cell = new Cell().SetBackgroundColor(secBg).SetBorder(Border.NO_BORDER)
                     .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingLeft(6);
@@ -139,13 +148,14 @@ public static class PdfQuotationExport
                 var adjStr = item.AdjPercent == 0 ? "—"
                     : (item.AdjPercent > 0 ? $"+{item.AdjPercent:N1}%" : $"{item.AdjPercent:N1}%");
 
-                AddItemCell(itemsTable, globalNo.ToString(),        fontRegular, rowBg, TextAlignment.CENTER);
-                AddItemCell(itemsTable, item.ReferenceCode,         fontRegular, rowBg);
-                AddItemCell(itemsTable, item.ProductName,           fontRegular, rowBg);
-                AddItemCell(itemsTable, item.Quantity.ToString(),   fontRegular, rowBg, TextAlignment.CENTER);
+                AddItemCell(itemsTable, globalNo.ToString(),          fontRegular, rowBg, TextAlignment.CENTER);
+                AddItemCell(itemsTable, item.ReferenceCode,           fontRegular, rowBg);
+                AddItemCell(itemsTable, item.ProductName,             fontRegular, rowBg);
+                AddItemCell(itemsTable, item.Quantity.ToString(),     fontRegular, rowBg, TextAlignment.CENTER);
+                AddItemCell(itemsTable, item.Satuan,                  fontRegular, rowBg, TextAlignment.CENTER);
                 AddItemCell(itemsTable, FormatRupiah(item.UnitPrice), fontRegular, rowBg, TextAlignment.RIGHT);
-                AddItemCell(itemsTable, adjStr,                     fontRegular, rowBg, TextAlignment.CENTER);
-                AddItemCell(itemsTable, FormatRupiah(item.LineTotal), fontBold,   rowBg, TextAlignment.RIGHT);
+                AddItemCell(itemsTable, adjStr,                       fontRegular, rowBg, TextAlignment.CENTER);
+                AddItemCell(itemsTable, FormatRupiah(item.LineTotal), fontBold,    rowBg, TextAlignment.RIGHT);
             }
         }
 
@@ -243,6 +253,7 @@ public static class PdfQuotationExport
         string  ProductName,
         string  Section,
         int     Quantity,
+        string  Satuan,
         decimal UnitPrice,
         decimal AdjPercent,
         decimal LineTotal);

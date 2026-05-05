@@ -213,6 +213,7 @@ public class EstimationHistoryForm : Form
                 d.Product?.ProductName ?? "—",
                 string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
                 d.Quantity,
+                string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
                 d.UnitPrice,
                 d.AdjPercent,
                 d.LineTotalPrice)).ToList();
@@ -228,6 +229,9 @@ public class EstimationHistoryForm : Form
                 outputPath:       sfd.FileName,
                 estimationNumber: est.EstimationNumber,
                 clientName:       est.ClientName,
+                contactPhone:     est.ContactPhone,
+                company:          est.Company,
+                address:          est.Address,
                 createdDate:      est.CreatedDate,
                 notes:            est.Notes ?? "",
                 items:            lineItems,

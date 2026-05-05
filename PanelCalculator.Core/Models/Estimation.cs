@@ -8,6 +8,12 @@ public class Estimation
 
     public required string ClientName { get; set; }
 
+    public string? ContactPhone { get; set; }
+
+    public string? Company { get; set; }
+
+    public string? Address { get; set; }
+
     public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
 
     public string? Notes { get; set; }

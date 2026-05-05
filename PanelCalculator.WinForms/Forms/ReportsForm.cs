@@ -35,15 +35,12 @@ public class ReportsForm : Form
         lblNav.Height = 36;
 
         var btnSummary  = MakeNavButton("📊  Ringkasan Penjualan");
-        var btnProduct  = MakeNavButton("🏆  Produk Terlaris");
         var btnPipeline = MakeNavButton("🎯  Pipeline Status");
 
         btnSummary.Click  += (s, e) => ShowSummaryReport();
-        btnProduct.Click  += (s, e) => ShowProductReport();
         btnPipeline.Click += (s, e) => ShowPipelineReport();
 
         sidebar.Controls.Add(btnPipeline);
-        sidebar.Controls.Add(btnProduct);
         sidebar.Controls.Add(btnSummary);
         sidebar.Controls.Add(lblNav);
 
@@ -128,59 +125,6 @@ public class ReportsForm : Form
 
         pnlContent.Controls.Add(dgv);
         pnlContent.Controls.Add(pnlCards);
-        pnlContent.Controls.Add(title);
-    }
-
-    private void ShowProductReport()
-    {
-        pnlContent.Controls.Clear();
-
-        var title = AppTheme.MakeLabel("Produk Terlaris", AppTheme.FontTitle, AppTheme.TextPrimary);
-        title.Dock = DockStyle.Top;
-        title.Height = 44;
-
-        var dgv = new DataGridView { Dock = DockStyle.Fill };
-        AppTheme.StyleGrid(dgv);
-        dgv.ReadOnly = true;
-        dgv.Columns.Add("ColRef",      "Kode");
-        dgv.Columns.Add("ColName",     "Nama Produk");
-        dgv.Columns.Add("ColCategory", "Kategori");
-        dgv.Columns.Add("ColQty",      "Total Qty");
-        dgv.Columns.Add("ColRevenue",  "Total Pendapatan");
-
-        // Fix N+1: one aggregation query + one product lookup query
-        var topProducts = _context.EstimationDetails
-            .AsNoTracking()
-            .GroupBy(d => d.ProductId)
-            .Select(g => new
-            {
-                ProductId    = g.Key,
-                TotalQty     = g.Sum(d => d.Quantity),
-                TotalRevenue = g.Sum(d => d.LineTotalPrice)
-            })
-            .OrderByDescending(x => x.TotalQty)
-            .Take(50)
-            .ToList();
-
-        // Single bulk query for all products needed
-        var productIds = topProducts.Select(x => x.ProductId).ToHashSet();
-        var productMap = _context.Products
-            .AsNoTracking()
-            .Where(p => productIds.Contains(p.ProductId))
-            .ToDictionary(p => p.ProductId);
-
-        foreach (var item in topProducts)
-        {
-            if (!productMap.TryGetValue(item.ProductId, out var product)) continue;
-            dgv.Rows.Add(
-                product.ReferenceCode,
-                product.ProductName,
-                product.Category,
-                item.TotalQty,
-                Fmt(item.TotalRevenue));
-        }
-
-        pnlContent.Controls.Add(dgv);
         pnlContent.Controls.Add(title);
     }
 
