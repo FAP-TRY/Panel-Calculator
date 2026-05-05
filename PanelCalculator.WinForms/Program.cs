@@ -1,9 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using PanelCalculator.Core.Models;
 using PanelCalculator.Core.Services;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
 using PanelCalculator.WinForms.Forms;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace PanelCalculator.WinForms;
 
@@ -25,11 +28,19 @@ static class Program
             var context = scope.ServiceProvider.GetRequiredService<PanelCalculatorContext>();
             context.Database.EnsureCreated();
             MigrateDatabase(context);
+            SeedDefaultAdmin(context);
         }
 
-        // Run main form
-        var mainForm = serviceProvider.GetRequiredService<MainForm>();
-        Application.Run(mainForm);
+        // Show login; if OK, run shell
+        var loginForm = serviceProvider.GetRequiredService<LoginForm>();
+        loginForm.ShowDialog();      // blocks until closed
+
+        if (loginForm.LoginSuccess)
+        {
+            var shell = serviceProvider.GetRequiredService<ShellForm>();
+            shell.CurrentUser = loginForm.LoggedInUser!;
+            Application.Run(shell);
+        }
     }
 
     /// <summary>
@@ -43,23 +54,63 @@ static class Program
             var conn = context.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) conn.Open();
 
-            void TryAlter(string sql)
+            void TryExec(string sql)
             {
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = sql;
-                try { cmd.ExecuteNonQuery(); } catch { /* column already exists – ignore */ }
+                try { cmd.ExecuteNonQuery(); } catch { /* already exists – ignore */ }
             }
 
             // EstimationDetails new columns
-            TryAlter("ALTER TABLE EstimationDetails ADD COLUMN AdjPercent REAL NOT NULL DEFAULT 0");
-            TryAlter("ALTER TABLE EstimationDetails ADD COLUMN Section TEXT NOT NULL DEFAULT 'Material Utama'");
+            TryExec("ALTER TABLE EstimationDetails ADD COLUMN AdjPercent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE EstimationDetails ADD COLUMN Section TEXT NOT NULL DEFAULT 'Material Utama'");
 
             // Estimations new columns
-            TryAlter("ALTER TABLE Estimations ADD COLUMN MarginPercent REAL NOT NULL DEFAULT 0");
-            TryAlter("ALTER TABLE Estimations ADD COLUMN PPh REAL NOT NULL DEFAULT 0");
-            TryAlter("ALTER TABLE Estimations ADD COLUMN PPhPercent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE Estimations ADD COLUMN MarginPercent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE Estimations ADD COLUMN PPh REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE Estimations ADD COLUMN PPhPercent REAL NOT NULL DEFAULT 0");
+
+            // Users table
+            TryExec(@"CREATE TABLE IF NOT EXISTS Users (
+                UserId       INTEGER PRIMARY KEY AUTOINCREMENT,
+                Username     TEXT NOT NULL UNIQUE,
+                PasswordHash TEXT NOT NULL,
+                FullName     TEXT NOT NULL DEFAULT '',
+                Role         TEXT NOT NULL DEFAULT 'Operator',
+                IsActive     INTEGER NOT NULL DEFAULT 1,
+                CreatedDate  TEXT NOT NULL DEFAULT (datetime('now')),
+                LastLoginDate TEXT NULL
+            )");
         }
-        catch { /* non-fatal – app still works without new columns on old rows */ }
+        catch { /* non-fatal */ }
+    }
+
+    private static void SeedDefaultAdmin(PanelCalculator.Data.PanelCalculatorContext context)
+    {
+        try
+        {
+            if (!context.Users.Any())
+            {
+                context.Users.Add(new User
+                {
+                    Username     = "admin",
+                    PasswordHash = HashPassword("admin123"),
+                    FullName     = "Administrator",
+                    Role         = "Admin",
+                    IsActive     = true,
+                    CreatedDate  = DateTime.UtcNow
+                });
+                context.SaveChanges();
+            }
+        }
+        catch { /* non-fatal */ }
+    }
+
+    public static string HashPassword(string password)
+    {
+        using var sha = SHA256.Create();
+        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
+        return Convert.ToHexString(bytes).ToLower();
     }
 
     private static void ConfigureServices(ServiceCollection services)
@@ -76,17 +127,20 @@ static class Program
 
         // Register DbContext
         services.AddDbContext<PanelCalculatorContext>(options =>
-            options.UseSqlite($"Data Source={dbPath};")
+            options.UseSqlite($"Data Source={dbPath};"),
+            ServiceLifetime.Transient
         );
 
         // Register repositories
-        services.AddScoped<IProductRepository, ProductRepository>();
-        services.AddScoped<IEstimationRepository, EstimationRepository>();
+        services.AddTransient<IProductRepository, ProductRepository>();
+        services.AddTransient<IEstimationRepository, EstimationRepository>();
 
         // Register services
-        services.AddScoped<ICalculationService, CalculationService>();
+        services.AddTransient<ICalculationService, CalculationService>();
 
         // Register forms
-        services.AddScoped<MainForm>();
+        services.AddTransient<LoginForm>();
+        services.AddTransient<ShellForm>();
+        services.AddTransient<MainForm>();
     }
 }

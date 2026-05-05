@@ -9,6 +9,7 @@ public class PanelCalculatorContext : DbContext
     public DbSet<Estimation> Estimations { get; set; } = null!;
     public DbSet<EstimationDetail> EstimationDetails { get; set; } = null!;
     public DbSet<AppSettings> Settings { get; set; } = null!;
+    public DbSet<User> Users { get; set; } = null!;
 
     public PanelCalculatorContext(DbContextOptions<PanelCalculatorContext> options) : base(options)
     {
@@ -64,6 +65,17 @@ public class PanelCalculatorContext : DbContext
             entity.HasKey(e => e.SettingKey);
             entity.Property(e => e.SettingKey).IsRequired().HasMaxLength(100);
             entity.Property(e => e.SettingValue).HasMaxLength(1000);
+        });
+
+        // Configure User
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.HasKey(e => e.UserId);
+            entity.Property(e => e.Username).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.PasswordHash).IsRequired().HasMaxLength(64);
+            entity.Property(e => e.FullName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(20);
+            entity.HasIndex(e => e.Username).IsUnique();
         });
 
         // Seed default settings

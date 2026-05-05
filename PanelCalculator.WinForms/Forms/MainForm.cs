@@ -69,7 +69,7 @@ public partial class MainForm : Form
         ClientSize          = new Size(1280, 780);
         MinimumSize         = new Size(1100, 680);
         Name            = "MainForm";
-        Text            = "Panel Calculator v1.0";
+        Text            = "Kalkulator Panel Tritunggal Swarna";
         StartPosition   = FormStartPosition.CenterScreen;
         BackColor       = AppTheme.Background;
         Load           += MainForm_Load;
@@ -96,7 +96,7 @@ public partial class MainForm : Form
 
         var lblAppTitle = new Label
         {
-            Text      = "⚡ Panel Calculator",
+            Text      = "⚡ Kalkulator Panel",
             Font      = AppTheme.FontTitle,
             ForeColor = Color.White,
             AutoSize  = false,
@@ -770,6 +770,9 @@ public partial class MainForm : Form
             LoadEstimationIntoCalculator(form.LoadedEstimation);
         await Task.CompletedTask;
     }
+
+    /// <summary>Called by ShellForm when user clicks the Riwayat nav item.</summary>
+    public void OpenHistoryFromShell() => BtnHistory_Click(null, EventArgs.Empty);
 
     private async void BtnSave_Click(object? sender, EventArgs e)
     {
