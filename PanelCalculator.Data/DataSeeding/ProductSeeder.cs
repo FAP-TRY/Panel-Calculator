@@ -43,27 +43,79 @@ public class ProductSeeder
 
             if (existing != null)
             {
-                existing.Category      = record.Category;
-                existing.ProductName   = record.ProductName;
+                existing.Category       = record.Category;
+                existing.ProductName    = record.ProductName;
                 existing.Specifications = record.Specifications;
-                existing.Price         = record.Price;
-                existing.StockStatus   = record.StockStatus;
-                existing.Vendor        = record.Vendor;
-                existing.LastUpdated   = DateTime.UtcNow;
+                existing.Price          = record.Price;
+                existing.PriceYear      = record.PriceYear;
+                existing.StockStatus    = record.StockStatus;
+                existing.Vendor         = record.Vendor;
+                existing.LastUpdated    = DateTime.UtcNow;
                 _context.Products.Update(existing);
             }
             else
             {
                 _context.Products.Add(new Product
                 {
-                    Category      = record.Category,
-                    ReferenceCode = record.ReferenceCode,
-                    ProductName   = record.ProductName,
+                    Category       = record.Category,
+                    ReferenceCode  = record.ReferenceCode,
+                    ProductName    = record.ProductName,
                     Specifications = record.Specifications,
-                    Price         = record.Price,
-                    StockStatus   = record.StockStatus,
-                    Vendor        = record.Vendor,
-                    LastUpdated   = DateTime.UtcNow
+                    Price          = record.Price,
+                    PriceYear      = record.PriceYear,
+                    StockStatus    = record.StockStatus,
+                    Vendor         = record.Vendor,
+                    LastUpdated    = DateTime.UtcNow
+                });
+            }
+
+            importedCount++;
+        }
+
+        await _context.SaveChangesAsync();
+        return importedCount;
+    }
+
+    /// <summary>
+    /// Upsert a collection of pre-built records.
+    /// Used by Excel import (ClosedXML) so DB logic stays in one place.
+    /// </summary>
+    public async Task<int> SeedFromRecordsAsync(IEnumerable<ProductCsvRecord> records)
+    {
+        int importedCount = 0;
+
+        foreach (var record in records)
+        {
+            if (string.IsNullOrWhiteSpace(record.ReferenceCode)) continue;
+
+            var existing = _context.Products
+                .FirstOrDefault(p => p.ReferenceCode == record.ReferenceCode);
+
+            if (existing != null)
+            {
+                existing.Category       = record.Category;
+                existing.ProductName    = record.ProductName;
+                existing.Specifications = record.Specifications;
+                existing.Price          = record.Price;
+                existing.PriceYear      = record.PriceYear;
+                existing.StockStatus    = record.StockStatus;
+                existing.Vendor         = record.Vendor;
+                existing.LastUpdated    = DateTime.UtcNow;
+                _context.Products.Update(existing);
+            }
+            else
+            {
+                _context.Products.Add(new Product
+                {
+                    Category       = record.Category,
+                    ReferenceCode  = record.ReferenceCode,
+                    ProductName    = record.ProductName,
+                    Specifications = record.Specifications,
+                    Price          = record.Price,
+                    PriceYear      = record.PriceYear,
+                    StockStatus    = record.StockStatus,
+                    Vendor         = record.Vendor,
+                    LastUpdated    = DateTime.UtcNow
                 });
             }
 
@@ -81,6 +133,7 @@ public class ProductSeeder
         public string ProductName { get; set; } = string.Empty;
         public string? Specifications { get; set; }
         public decimal Price { get; set; }
+        public int? PriceYear { get; set; }
         public int StockStatus { get; set; }
         public string? Vendor { get; set; }
     }

@@ -18,7 +18,8 @@ public partial class MainForm : Form
     // ── Current estimation state ─────────────────────────────────────────
     private List<EstimationLineItem> _currentItems = new();
     private decimal _marginPercent = 25m;   // overall: positive = markup, negative = diskon
-    private decimal _shippingCost  = 50000m;
+    private decimal _shippingCost  = 0m;
+    private string  _shippingNote  = "";
     private decimal _taxPercent    = 11m;   // PPN
     private decimal _pphPercent    = 0m;    // PPh
     private bool    _refreshing    = false; // re-entrancy guard
@@ -31,17 +32,18 @@ public partial class MainForm : Form
     private DataGridView dgvItems    = null!;
     private TextBox   txtSearch    = null!;
     private ComboBox  cmbCategory  = null!;
+    private ComboBox  cmbVendor    = null!;
 
     private ComboBox cmbTargetSection = null!; // which section new items go to
 
     private Label lblSubTotal = null!, lblMarginAmt = null!, lblShipping = null!;
     private Label lblTax = null!, lblPPh = null!, lblTotal = null!;
     private Label lblOverallAdjTitle = null!;   // updated dynamically
+    private Label lblShippingNote    = null!;   // shows method/ekspedisi
 
-    private NumericUpDown numMargin   = null!;
-    private NumericUpDown numShipping = null!;
-    private NumericUpDown numTax      = null!;
-    private NumericUpDown numPPh      = null!;
+    private NumericUpDown numMargin = null!;
+    private NumericUpDown numTax    = null!;
+    private NumericUpDown numPPh    = null!;
 
     // ── Client info fields (live in summary panel, no dialog) ────────────
     private TextBox        txtClientName    = null!;
@@ -55,7 +57,11 @@ public partial class MainForm : Form
 
     private Button btnSave = null!, btnNew = null!, btnHistory = null!;
     private Button btnExport = null!, btnReports = null!, btnSettings = null!;
+    private Button btnDashboard = null!;
     private Label  lblStatus = null!;
+
+    /// <summary>Set by ShellForm after login so Dashboard can show user greeting.</summary>
+    public User? CurrentUser { get; set; }
 
     public MainForm(
         PanelCalculatorContext context,
@@ -130,19 +136,21 @@ public partial class MainForm : Form
             Margin        = new Padding(0)
         };
 
+        btnDashboard = MakeToolbarButton("📊 Dashboard",     Color.FromArgb(55, 65, 81),  120);
         btnNew      = MakeToolbarButton("＋ Estimasi Baru", Color.FromArgb(59, 130, 246), 140);
         btnHistory  = MakeToolbarButton("📋 Riwayat",       Color.FromArgb(55, 65, 81),  110);
         btnExport   = MakeToolbarButton("📄 Export PDF",    Color.FromArgb(55, 65, 81),  120);
         btnReports  = MakeToolbarButton("📊 Laporan",       Color.FromArgb(55, 65, 81),  110);
         btnSettings = MakeToolbarButton("⚙ Settings",       Color.FromArgb(55, 65, 81),  110);
 
+        btnDashboard.Click += BtnDashboard_Click;
         btnNew.Click      += BtnNew_Click;
         btnHistory.Click  += BtnHistory_Click;
         btnExport.Click   += BtnExport_Click;
         btnReports.Click  += BtnReports_Click;
         btnSettings.Click += BtnSettings_Click;
 
-        btnFlow.Controls.AddRange(new Control[] { btnNew, btnHistory, btnExport, btnReports, btnSettings });
+        btnFlow.Controls.AddRange(new Control[] { btnDashboard, btnNew, btnHistory, btnExport, btnReports, btnSettings });
         btnAreaPanel.Controls.Add(btnFlow);
 
         // Right-align the flow panel whenever the container resizes
@@ -233,10 +241,21 @@ public partial class MainForm : Form
 
         cmbCategory = new ComboBox { Dock = DockStyle.Top };
         AppTheme.StyleComboBox(cmbCategory);
-        cmbCategory.DropDownStyle       = ComboBoxStyle.DropDownList;
-        cmbCategory.SelectedIndexChanged += CmbCategory_SelectedIndexChanged;
+        cmbCategory.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cmbCategory.SelectedIndexChanged += CmbFilter_Changed;
 
-        var spacer1 = new Panel { Dock = DockStyle.Top, Height = 6 };
+        var spacer1 = new Panel { Dock = DockStyle.Top, Height = 4 };
+
+        var lblVendor = AppTheme.MakeLabel("Merk:", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblVendor.Dock   = DockStyle.Top;
+        lblVendor.Height = 20;
+
+        cmbVendor = new ComboBox { Dock = DockStyle.Top };
+        AppTheme.StyleComboBox(cmbVendor);
+        cmbVendor.DropDownStyle        = ComboBoxStyle.DropDownList;
+        cmbVendor.SelectedIndexChanged += CmbFilter_Changed;
+
+        var spacer1b = new Panel { Dock = DockStyle.Top, Height = 6 };
 
         var lblSearch = AppTheme.MakeLabel("Cari produk / kode:", AppTheme.FontSmall, AppTheme.TextSecondary);
         lblSearch.Dock   = DockStyle.Top;
@@ -251,9 +270,11 @@ public partial class MainForm : Form
         dgvProducts = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgvProducts);
         dgvProducts.ReadOnly = true;
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColRef",       HeaderText = "Kode",        Width = 110, FillWeight = 30 });
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColName",      HeaderText = "Nama Produk", FillWeight = 50 });
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColPrice",     HeaderText = "Harga (Rp)",  FillWeight = 30, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColRef",       HeaderText = "Kode",        Width = 100, FillWeight = 25 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColName",      HeaderText = "Nama Produk", FillWeight = 45 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColVendor",    HeaderText = "Merk",        FillWeight = 18 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColPrice",     HeaderText = "Harga (Rp)",  FillWeight = 28, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColYear",      HeaderText = "Thn",         Width = 46,      DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter, ForeColor = Color.FromArgb(100, 116, 139) } });
         dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColProductId", Visible    = false });
 
         dgvProducts.CellDoubleClick += DgvProducts_CellDoubleClick;
@@ -273,6 +294,9 @@ public partial class MainForm : Form
         parent.Controls.Add(spacer2);
         parent.Controls.Add(txtSearch);
         parent.Controls.Add(lblSearch);
+        parent.Controls.Add(spacer1b);
+        parent.Controls.Add(cmbVendor);
+        parent.Controls.Add(lblVendor);
         parent.Controls.Add(spacer1);
         parent.Controls.Add(cmbCategory);
         parent.Controls.Add(lblCat);
@@ -470,21 +494,34 @@ public partial class MainForm : Form
         AddSeparator(pnlSummary, ref y);
 
         // Ongkos Kirim
-        var lblShipTitle = AppTheme.MakeLabel("Ongkos Kirim (Rp):", AppTheme.FontSmall, AppTheme.TextSecondary);
+        var lblShipTitle = AppTheme.MakeLabel("Ongkos Kirim:", AppTheme.FontSmall, AppTheme.TextSecondary);
         lblShipTitle.Location = new Point(0, y);
         lblShipTitle.AutoSize = true;
         pnlSummary.Controls.Add(lblShipTitle);
-        y += 20;
 
-        numShipping = new NumericUpDown
+        var btnHitungOngkir = new Button
         {
-            Location = new Point(0, y), Width = 200,
-            Minimum = 0, Maximum = 100_000_000, Increment = 10000, Value = _shippingCost,
-            Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            Text     = "🚚 Hitung Ongkir",
+            Location = new Point(0, y + 18),
+            Width    = 160,
+            Height   = 30
         };
-        numShipping.ValueChanged += NumShipping_ValueChanged;
-        pnlSummary.Controls.Add(numShipping);
-        y += 30;
+        AppTheme.StyleButton(btnHitungOngkir, Color.FromArgb(55, 65, 81), Color.White);
+        btnHitungOngkir.Click += BtnHitungOngkir_Click;
+        pnlSummary.Controls.Add(btnHitungOngkir);
+
+        lblShippingNote = new Label
+        {
+            Text      = "Belum dihitung",
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.TextMuted,
+            Location  = new Point(0, y + 52),
+            AutoSize  = false,
+            Width     = 220,
+            Height    = 16
+        };
+        pnlSummary.Controls.Add(lblShippingNote);
+        y += 72;
 
         AddSummaryRow(pnlSummary, ref y, "Ongkos Kirim:", ref lblShipping);
         AddSeparator(pnlSummary, ref y);
@@ -619,7 +656,7 @@ public partial class MainForm : Form
     // ════════════════════════════════════════════════════════════════════
     private async void MainForm_Load(object? sender, EventArgs e)
     {
-        await LoadCategoriesAsync();
+        await LoadCategoriesAsync();   // loads both categories and vendors
         await LoadProductsAsync();
         LoadSettingsFromDb();
         RecalcSummary();
@@ -632,9 +669,15 @@ public partial class MainForm : Form
         cmbCategory.Items.Add("— Semua Kategori —");
         foreach (var cat in categories) cmbCategory.Items.Add(cat);
         cmbCategory.SelectedIndex = 0;
+
+        var vendors = (await _productRepo.GetAllVendorsAsync()).ToList();
+        cmbVendor.Items.Clear();
+        cmbVendor.Items.Add("— Semua Merk —");
+        foreach (var v in vendors) cmbVendor.Items.Add(v);
+        cmbVendor.SelectedIndex = 0;
     }
 
-    private async Task LoadProductsAsync(string? search = null, string? category = null)
+    private async Task LoadProductsAsync(string? search = null, string? category = null, string? vendor = null)
     {
         IEnumerable<Product> products;
 
@@ -645,15 +688,20 @@ public partial class MainForm : Form
         else
             products = await _productRepo.GetAllAsync();
 
-        if (!string.IsNullOrWhiteSpace(search) && !string.IsNullOrWhiteSpace(category) && category != "— Semua Kategori —")
+        // Apply additional filters in memory
+        if (!string.IsNullOrWhiteSpace(category) && category != "— Semua Kategori —")
             products = products.Where(p => p.Category == category);
+
+        if (!string.IsNullOrWhiteSpace(vendor) && vendor != "— Semua Merk —")
+            products = products.Where(p => p.Vendor == vendor);
 
         dgvProducts.Rows.Clear();
         foreach (var p in products)
         {
-            // Show product name with "(Indent)" suffix for stock-indent items instead of grey coloring
             var displayName = p.StockStatus == 2 ? $"{p.ProductName}  [Indent]" : p.ProductName;
-            dgvProducts.Rows.Add(p.ReferenceCode, displayName, p.Price, p.ProductId);
+            var vendorShort = p.Vendor?.Replace("Schneider Electric", "Schneider") ?? "";
+            var yearStr     = p.PriceYear.HasValue ? p.PriceYear.Value.ToString() : "—";
+            dgvProducts.Rows.Add(p.ReferenceCode, displayName, vendorShort, p.Price, yearStr, p.ProductId);
         }
         SetStatus($"{dgvProducts.Rows.Count} produk ditemukan.");
     }
@@ -678,16 +726,15 @@ public partial class MainForm : Form
             catch { }
         }
 
-        TryLoad("DefaultMarginPercent", numMargin,   ref _marginPercent);
-        TryLoad("DefaultTaxPercent",    numTax,      ref _taxPercent);
-        TryLoad("DefaultShippingCost",  numShipping, ref _shippingCost);
+        TryLoad("DefaultMarginPercent", numMargin, ref _marginPercent);
+        TryLoad("DefaultTaxPercent",    numTax,    ref _taxPercent);
     }
 
-    private async void CmbCategory_SelectedIndexChanged(object? sender, EventArgs e) =>
-        await LoadProductsAsync(txtSearch.Text, cmbCategory.SelectedItem?.ToString());
+    private async void CmbFilter_Changed(object? sender, EventArgs e) =>
+        await LoadProductsAsync(txtSearch.Text, cmbCategory.SelectedItem?.ToString(), cmbVendor.SelectedItem?.ToString());
 
     private async void TxtSearch_TextChanged(object? sender, EventArgs e) =>
-        await LoadProductsAsync(txtSearch.Text, cmbCategory.SelectedItem?.ToString());
+        await LoadProductsAsync(txtSearch.Text, cmbCategory.SelectedItem?.ToString(), cmbVendor.SelectedItem?.ToString());
 
     private void DgvProducts_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
@@ -803,9 +850,18 @@ public partial class MainForm : Form
         RecalcSummary();
     }
 
-    private void NumShipping_ValueChanged(object? sender, EventArgs e)
+    private void BtnHitungOngkir_Click(object? sender, EventArgs e)
     {
-        _shippingCost = numShipping.Value;
+        using var dlg = new ShippingCalculatorDialog(_shippingCost, _shippingNote);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        _shippingCost = dlg.ResultCost;
+        _shippingNote = dlg.ResultNote;
+
+        lblShippingNote.Text = string.IsNullOrEmpty(_shippingNote)
+            ? "Dihitung manual"
+            : _shippingNote.Length > 40 ? _shippingNote[..37] + "…" : _shippingNote;
+
         RecalcSummary();
     }
 
@@ -821,6 +877,20 @@ public partial class MainForm : Form
         RecalcSummary();
     }
 
+    private void BtnDashboard_Click(object? sender, EventArgs e)
+    {
+        var user = CurrentUser ?? new PanelCalculator.Core.Models.User
+        {
+            Username     = "?",
+            PasswordHash = "",
+            FullName     = "Pengguna",
+            Role         = "Operator",
+            IsActive     = true
+        };
+        using var dlg = new DashboardForm(_context, user);
+        dlg.ShowDialog(this);
+    }
+
     private void BtnNew_Click(object? sender, EventArgs e)
     {
         if (_currentItems.Count > 0)
@@ -830,6 +900,10 @@ public partial class MainForm : Form
             if (result != DialogResult.Yes) return;
         }
         _currentItems.Clear();
+        _shippingCost = 0m;
+        _shippingNote = "";
+        if (lblShippingNote != null) lblShippingNote.Text = "Belum dihitung";
+
         // Clear client info fields
         txtClientName.Clear();
         txtContactPhone.Clear();
@@ -898,7 +972,7 @@ public partial class MainForm : Form
             PPhPercent        = _pphPercent,
             PPh               = pphAmt,
             TotalPrice        = total,
-            Status            = "Draft",
+            Status            = "Antri Hitung",
             CreatedDate       = dtpCreatedDate.Value.ToUniversalTime(),
             EstimatedOrderDate = dtpEstOrderDate.Value.ToUniversalTime()
         };
@@ -989,7 +1063,7 @@ public partial class MainForm : Form
 
     private void BtnSettings_Click(object? sender, EventArgs e)
     {
-        using var form = new SettingsForm(_context);
+        using var form = new SettingsForm(_context) { CurrentUser = CurrentUser };
         form.ShowDialog();
         LoadSettingsFromDb();
     }
@@ -1130,8 +1204,12 @@ public partial class MainForm : Form
                 ? Math.Round(est.Tax / (est.SubTotal + est.Margin + est.ShippingCost) * 100, 1)
                 : 11m, numTax.Minimum, numTax.Maximum);
             _taxPercent       = numTax.Value;
-            numShipping.Value = Math.Clamp(est.ShippingCost, numShipping.Minimum, numShipping.Maximum);
-            _shippingCost     = numShipping.Value;
+            _shippingCost = est.ShippingCost;
+            _shippingNote = "";
+            if (lblShippingNote != null)
+                lblShippingNote.Text = est.ShippingCost > 0
+                    ? "Rp " + est.ShippingCost.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("id-ID"))
+                    : "Belum dihitung";
             numPPh.Value      = Math.Clamp(est.PPhPercent, numPPh.Minimum, numPPh.Maximum);
             _pphPercent       = numPPh.Value;
         }

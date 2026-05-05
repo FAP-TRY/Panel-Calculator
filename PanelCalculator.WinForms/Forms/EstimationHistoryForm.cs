@@ -54,7 +54,12 @@ public class EstimationHistoryForm : Form
 
         cmbStatus = new ComboBox { Location = new Point(328, 28), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
         AppTheme.StyleComboBox(cmbStatus);
-        cmbStatus.Items.AddRange(new[] { "Semua", "Draft", "Approved", "Sent", "Won", "Lost" });
+        cmbStatus.Items.AddRange(new[] {
+            "Semua",
+            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove",
+            "Won", "Lost",
+            "Draft", "Approved", "Sent"   // kompatibilitas data lama
+        });
         cmbStatus.SelectedIndex = 0;
         cmbStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
@@ -143,11 +148,15 @@ public class EstimationHistoryForm : Form
             // Color-code status
             dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = est.Status switch
             {
-                "Won"      => AppTheme.Success,
-                "Lost"     => AppTheme.Danger,
-                "Approved" => AppTheme.Primary,
-                "Sent"     => AppTheme.Warning,
-                _          => AppTheme.TextSecondary
+                "Antri Hitung"     => Color.FromArgb(100, 116, 139),  // slate
+                "Selesai Dihitung" => Color.FromArgb(37,  99,  235),  // blue
+                "Menunggu Approve" => Color.FromArgb(217, 119,   6),  // amber
+                "Sudah Diapprove"  => Color.FromArgb(  5, 150, 105),  // emerald
+                "Won"              => AppTheme.Success,
+                "Lost"             => AppTheme.Danger,
+                "Approved"         => AppTheme.Primary,               // data lama
+                "Sent"             => AppTheme.Warning,               // data lama
+                _                  => AppTheme.TextSecondary
             };
         }
     }
@@ -296,7 +305,10 @@ public class StatusChangeDialog : Form
 
         cmb = new ComboBox { Location = new Point(20, 44), Width = 240, DropDownStyle = ComboBoxStyle.DropDownList };
         AppTheme.StyleComboBox(cmb);
-        cmb.Items.AddRange(new[] { "Draft", "Approved", "Sent", "Won", "Lost" });
+        cmb.Items.AddRange(new[] {
+            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove",
+            "Won", "Lost"
+        });
         cmb.SelectedItem = currentStatus;
 
         var btnOk = new Button { Text = "Simpan", Location = new Point(20, 85), Width = 110, Height = 32 };

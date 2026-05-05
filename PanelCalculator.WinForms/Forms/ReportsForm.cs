@@ -136,7 +136,7 @@ public class ReportsForm : Form
         title.Dock = DockStyle.Top;
         title.Height = 44;
 
-        var statuses    = new[] { "Draft", "Approved", "Sent", "Won", "Lost" };
+        var statuses    = new[] { "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove", "Won", "Lost" };
         var estimations = _context.Estimations.AsNoTracking().ToList();
 
         var pnlCards = new FlowLayoutPanel

@@ -8,6 +8,7 @@ public interface IProductRepository : IRepository<Product>
     Task<IEnumerable<Product>> GetByCategoryAsync(string category);
     Task<Product?> GetByReferenceCodeAsync(string referenceCode);
     Task<IEnumerable<string>> GetAllCategoriesAsync();
+    Task<IEnumerable<string>> GetAllVendorsAsync();
     Task<IEnumerable<Product>> SearchAsync(string searchTerm);
 }
 
@@ -37,6 +38,16 @@ public class ProductRepository : BaseRepository<Product>, IProductRepository
             .Select(p => p.Category)
             .Distinct()
             .OrderBy(c => c)
+            .ToListAsync();
+    }
+
+    public async Task<IEnumerable<string>> GetAllVendorsAsync()
+    {
+        return await _context.Products
+            .Where(p => p.Vendor != null && p.Vendor != "")
+            .Select(p => p.Vendor!)
+            .Distinct()
+            .OrderBy(v => v)
             .ToListAsync();
     }
 

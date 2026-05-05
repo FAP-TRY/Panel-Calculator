@@ -65,3 +65,14 @@ Thumbs.db
 # Temp files
 *.tmp
 *.temp
+
+# Published output (self-contained EXE ~180MB, too large for git)
+publish/
+
+# Claude local config
+.claude/
+
+# Binary data/price-list files
+*.xlsx
+*.xls
+*.pdf

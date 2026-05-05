@@ -31,15 +31,26 @@ static class Program
             SeedDefaultAdmin(context);
         }
 
-        // Show login; if OK, run shell
-        var loginForm = serviceProvider.GetRequiredService<LoginForm>();
-        loginForm.ShowDialog();      // blocks until closed
-
-        if (loginForm.LoginSuccess)
+        // ── Login → Shell loop ───────────────────────────────────────────
+        // After an explicit logout (WantsRelogin = true) the shell is closed
+        // and we return here to show the login screen again instead of exiting.
+        while (true)
         {
+            var loginForm = serviceProvider.GetRequiredService<LoginForm>();
+            loginForm.ShowDialog();   // ShowDialog creates its own message loop
+
+            if (!loginForm.LoginSuccess)
+                break;  // user closed without logging in → exit app
+
             var shell = serviceProvider.GetRequiredService<ShellForm>();
             shell.CurrentUser = loginForm.LoggedInUser!;
-            Application.Run(shell);
+            loginForm.Dispose();
+
+            Application.Run(shell);  // blocks until shell is closed
+
+            if (!shell.WantsRelogin)
+                break;  // closed via X button (not logout) → exit app
+            // else: loop back → show login screen again
         }
     }
 
@@ -65,6 +76,9 @@ static class Program
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN AdjPercent REAL NOT NULL DEFAULT 0");
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN Section TEXT NOT NULL DEFAULT 'Material Utama'");
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN Satuan TEXT NOT NULL DEFAULT 'pcs'");
+
+            // Products new columns
+            TryExec("ALTER TABLE Products ADD COLUMN PriceYear INTEGER NULL");
 
             // Estimations new columns
             TryExec("ALTER TABLE Estimations ADD COLUMN MarginPercent REAL NOT NULL DEFAULT 0");

@@ -14,6 +14,8 @@ public class Product
 
     public decimal Price { get; set; } // Harga dari vendor (Rp)
 
+    public int? PriceYear { get; set; } // Tahun harga daftar (e.g. 2024)
+
     public int StockStatus { get; set; } // 1=Stock, 2=Indent
 
     public string? Vendor { get; set; } // Optional: Schneider, etc
