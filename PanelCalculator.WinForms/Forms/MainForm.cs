@@ -231,9 +231,33 @@ public partial class MainForm : Form
         parent.BackColor = AppTheme.SidebarBg;
         parent.Padding   = new Padding(12);
 
+        // Panel title row: "Daftar Produk"  [+ Tambah]
+        var pnlTitleRow = new Panel { Dock = DockStyle.Top, Height = 30 };
+
         var lblPanelTitle = AppTheme.MakeLabel("Daftar Produk", AppTheme.FontBold, AppTheme.TextPrimary);
-        lblPanelTitle.Dock   = DockStyle.Top;
-        lblPanelTitle.Height = 28;
+        lblPanelTitle.Dock   = DockStyle.Left;
+        lblPanelTitle.Width  = 160;
+        lblPanelTitle.Height = 30;
+        lblPanelTitle.TextAlign = ContentAlignment.MiddleLeft;
+
+        var btnAddProduct = new Button
+        {
+            Text      = "➕ Tambah",
+            Dock      = DockStyle.Right,
+            Width     = 90,
+            Height    = 26,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(16, 185, 129),
+            ForeColor = Color.White,
+            Font      = AppTheme.FontSmall,
+            Cursor    = Cursors.Hand
+        };
+        btnAddProduct.FlatAppearance.BorderSize = 0;
+        btnAddProduct.FlatAppearance.MouseOverBackColor = Color.FromArgb(5, 150, 105);
+        btnAddProduct.Click += BtnAddProduct_Click;
+
+        pnlTitleRow.Controls.Add(btnAddProduct);
+        pnlTitleRow.Controls.Add(lblPanelTitle);
 
         var lblCat = AppTheme.MakeLabel("Kategori:", AppTheme.FontSmall, AppTheme.TextSecondary);
         lblCat.Dock   = DockStyle.Top;
@@ -300,7 +324,7 @@ public partial class MainForm : Form
         parent.Controls.Add(spacer1);
         parent.Controls.Add(cmbCategory);
         parent.Controls.Add(lblCat);
-        parent.Controls.Add(lblPanelTitle);
+        parent.Controls.Add(pnlTitleRow);
     }
 
     // ── CENTER PANEL: Estimation Items Grid ──────────────────────────────
@@ -735,6 +759,64 @@ public partial class MainForm : Form
 
     private async void TxtSearch_TextChanged(object? sender, EventArgs e) =>
         await LoadProductsAsync(txtSearch.Text, cmbCategory.SelectedItem?.ToString(), cmbVendor.SelectedItem?.ToString());
+
+    // ── Tambah Produk ─────────────────────────────────────────────────────
+    private async void BtnAddProduct_Click(object? sender, EventArgs e)
+    {
+        // Pass existing categories so the combo is pre-filled
+        var categories = _context.Products
+            .Select(p => p.Category)
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        using var dlg = new ProductEditDialog(null, categories);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        // Check for duplicate reference code
+        if (_context.Products.Any(p => p.ReferenceCode == dlg.OutReferenceCode))
+        {
+            MessageBox.Show(
+                $"Kode Referensi \"{dlg.OutReferenceCode}\" sudah ada di database.\nGunakan kode yang berbeda.",
+                "Kode Duplikat", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var product = new Product
+        {
+            Category       = dlg.OutCategory,
+            ReferenceCode  = dlg.OutReferenceCode,
+            ProductName    = dlg.OutProductName,
+            Specifications = dlg.OutSpecifications,
+            Price          = dlg.OutPrice,
+            PriceYear      = dlg.OutPriceYear,
+            StockStatus    = dlg.OutStockStatus,
+            Vendor         = dlg.OutVendor,
+            LastUpdated    = DateTime.UtcNow
+        };
+
+        try
+        {
+            _context.Products.Add(product);
+            await _context.SaveChangesAsync();
+
+            // Refresh product list and category/vendor dropdowns
+            await LoadCategoriesAsync();
+            await LoadProductsAsync(txtSearch.Text,
+                cmbCategory.SelectedItem?.ToString(),
+                cmbVendor.SelectedItem?.ToString());
+
+            SetStatus($"Produk \"{product.ProductName}\" berhasil ditambahkan.");
+            MessageBox.Show(
+                $"Produk \"{product.ProductName}\" berhasil ditambahkan ke database.",
+                "Berhasil", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal menyimpan produk:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 
     private void DgvProducts_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
