@@ -46,35 +46,9 @@ if errorlevel 1 (
 for /f "tokens=*" %%v in ('dotnet --version') do set "DOTNET_VER=%%v"
 echo [OK] .NET SDK     : %DOTNET_VER%
 
-:: ---- Install / locate Obfuscar ----------------------------------
-echo.
-echo [1/5] Memeriksa Obfuscar...
-
-:: dotnet global tools install to %USERPROFILE%\.dotnet\tools\
-:: The tool name is obfuscar.console.exe (not obfuscar.exe)
-set "DOTNET_TOOLS=%USERPROFILE%\.dotnet\tools"
-set "OBF_EXE=%DOTNET_TOOLS%\obfuscar.console.exe"
-
-if not exist "%OBF_EXE%" (
-    echo        Menginstall Obfuscar...
-    dotnet tool install --global Obfuscar.GlobalTool
-)
-
-:: Try update silently
-dotnet tool update --global Obfuscar.GlobalTool >nul 2>&1
-
-if exist "%OBF_EXE%" (
-    for /f "tokens=*" %%v in ('"%OBF_EXE%" --version 2^>^&1') do set "OBF_VER=%%v"
-    echo [OK] Obfuscar     : !OBF_VER!
-    set "SKIP_OBF=0"
-) else (
-    echo [WARN] Obfuscar tidak ditemukan. Melanjutkan tanpa obfuscation...
-    set "SKIP_OBF=1"
-)
-
 :: ---- Clean previous artifacts -----------------------------------
 echo.
-echo [2/5] Membersihkan hasil build sebelumnya...
+echo [1/4] Membersihkan hasil build sebelumnya...
 if exist "app-raw"   rmdir /s /q "app-raw"
 if exist "app-obf"   rmdir /s /q "app-obf"
 if exist "app-final" rmdir /s /q "app-final"
@@ -83,7 +57,7 @@ echo [OK] Bersih.
 
 :: ---- Publish multi-file self-contained --------------------------
 echo.
-echo [3/5] Mempublish aplikasi (self-contained, multi-file)...
+echo [2/4] Mempublish aplikasi (self-contained, multi-file)...
 echo       Ini mungkin memakan waktu 1-2 menit...
 dotnet publish "%ROOT%\PanelCalculator.WinForms\PanelCalculator.WinForms.csproj" ^
     -c Release ^
@@ -101,47 +75,19 @@ if errorlevel 1 (
 )
 echo [OK] Publish selesai.
 
-:: ---- Obfuscate app assemblies -----------------------------------
-if "%SKIP_OBF%"=="1" (
-    echo.
-    echo [4/5] Obfuscation DILEWATI.
-    echo       Menyalin langsung ke app-final...
-    xcopy /e /i /q "app-raw" "app-final" >nul
-    goto :package
-)
-
+:: ---- Prepare app-final (skip obfuscation) -----------------------
 echo.
-echo [4/5] Menjalankan Obfuscar...
-"%OBF_EXE%" obfuscar.xml
-if errorlevel 1 (
-    echo [WARN] Obfuscar selesai dengan peringatan - memeriksa output...
-)
-
-:: Merge: copy all runtime files from app-raw, then overwrite
-:: app DLLs with obfuscated versions from app-obf
+echo [3/4] Menyiapkan app-final...
+echo       (Obfuscation dinonaktifkan: tidak kompatibel dengan .NET 8)
 xcopy /e /i /q "app-raw" "app-final" >nul
-
-for %%F in (
-    PanelCalculator.WinForms.dll
-    PanelCalculator.Core.dll
-    PanelCalculator.Data.dll
-) do (
-    if exist "app-obf\%%F" (
-        copy /y "app-obf\%%F" "app-final\%%F" >nul
-        echo [OK] Obfuscated: %%F
-    ) else (
-        echo [WARN] %%F tidak ada di output Obfuscar - menggunakan original.
-    )
-)
 
 :: Remove PDB debug symbols (do not ship)
 del /q "app-final\*.pdb" 2>nul
-echo [OK] Obfuscation selesai.
+echo [OK] app-final siap.
 
-:package
 :: ---- Compile Inno Setup installer -------------------------------
 echo.
-echo [5/5] Mengompilasi installer dengan Inno Setup...
+echo [4/4] Mengompilasi installer dengan Inno Setup...
 "%ISCC%" "PanelCalculatorSetup.iss"
 if errorlevel 1 (
     echo.

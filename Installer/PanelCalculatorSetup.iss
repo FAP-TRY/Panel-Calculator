@@ -43,7 +43,6 @@ LZMAUseSeparateProcess=yes
 
 ; -- Appearance -------------------------------------------------
 WizardStyle=modern
-WizardResizable=no
 
 ; -- Platform requirements --------------------------------------
 ; Windows 10 version 1809 (build 17763) or later, 64-bit only
@@ -69,6 +68,8 @@ Encryption=yes
 ; -- Misc -------------------------------------------------------
 ; Prevent running multiple instances of the installer
 SetupMutex=PanelCalculatorSetupMutex
+; Suppress warning about HKCU usage when installed as admin (startup entry is intentionally per-user)
+UsedUserAreasWarning=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -111,6 +112,7 @@ Root: HKLM; \
   Flags: uninsdeletekey
 
 ; Auto-startup entry (only if user selected the task)
+; Note: HKCU is intentional here - startup entries are per-user
 Root: HKCU; \
   Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   ValueType: string; ValueName: "{#MyAppName}"; \
