@@ -20,6 +20,12 @@ public class EstimationDetail
     /// <summary>Per-item adjustment: positive = markup %, negative = discount %</summary>
     public decimal AdjPercent { get; set; } = 0m;
 
+    /// <summary>Per-item adjustment tier 2: positive = markup %, negative = discount %</summary>
+    public decimal Adj2Percent { get; set; } = 0m;
+
+    /// <summary>Per-item adjustment tier 3: positive = markup %, negative = discount %</summary>
+    public decimal Adj3Percent { get; set; } = 0m;
+
     /// <summary>Unit of measurement, e.g. pcs, set, meter, rol</summary>
     public string Satuan { get; set; } = "pcs";
 

@@ -33,6 +33,9 @@ public class Estimation
 
     public decimal MarginPercent { get; set; } = 0m; // overall margin/discount percent (negative = diskon)
 
+    public decimal Margin2Percent { get; set; } = 0m;
+    public decimal Margin3Percent { get; set; } = 0m;
+
     public decimal Margin { get; set; } // nilai margin/diskon
 
     public decimal Tax { get; set; } // PPN

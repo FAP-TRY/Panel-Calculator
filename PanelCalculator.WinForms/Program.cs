@@ -80,12 +80,16 @@ static class Program
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN AdjPercent REAL NOT NULL DEFAULT 0");
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN Section TEXT NOT NULL DEFAULT 'Material Utama'");
             TryExec("ALTER TABLE EstimationDetails ADD COLUMN Satuan TEXT NOT NULL DEFAULT 'pcs'");
+            TryExec("ALTER TABLE EstimationDetails ADD COLUMN Adj2Percent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE EstimationDetails ADD COLUMN Adj3Percent REAL NOT NULL DEFAULT 0");
 
             // Products new columns
             TryExec("ALTER TABLE Products ADD COLUMN PriceYear INTEGER NULL");
 
             // Estimations new columns
             TryExec("ALTER TABLE Estimations ADD COLUMN MarginPercent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE Estimations ADD COLUMN Margin2Percent REAL NOT NULL DEFAULT 0");
+            TryExec("ALTER TABLE Estimations ADD COLUMN Margin3Percent REAL NOT NULL DEFAULT 0");
             TryExec("ALTER TABLE Estimations ADD COLUMN PPh REAL NOT NULL DEFAULT 0");
             TryExec("ALTER TABLE Estimations ADD COLUMN PPhPercent REAL NOT NULL DEFAULT 0");
             TryExec("ALTER TABLE Estimations ADD COLUMN ContactPhone TEXT NULL");

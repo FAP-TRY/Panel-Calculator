@@ -17,7 +17,9 @@ public partial class MainForm : Form
 
     // ── Current estimation state ─────────────────────────────────────────
     private List<EstimationLineItem> _currentItems = new();
-    private decimal _marginPercent = 25m;   // overall: positive = markup, negative = diskon
+    private decimal _margin1Percent = 25m;  // overall tier 1: kenaikan harga / markup
+    private decimal _margin2Percent = 0m;   // overall tier 2: diskon atau adjustment
+    private decimal _margin3Percent = 0m;   // overall tier 3: margin final
     private decimal _shippingCost  = 0m;
     private string  _shippingNote  = "";
     private decimal _taxPercent    = 11m;   // PPN
@@ -36,12 +38,14 @@ public partial class MainForm : Form
 
     private ComboBox cmbTargetSection = null!; // which section new items go to
 
-    private Label lblSubTotal = null!, lblMarginAmt = null!, lblShipping = null!;
+    private Label lblSubTotal = null!, lblShipping = null!;
     private Label lblTax = null!, lblPPh = null!, lblTotal = null!;
-    private Label lblOverallAdjTitle = null!;   // updated dynamically
+    private Label lblMarginAmt1 = null!, lblMarginAmt2 = null!, lblMarginAmt3 = null!;
+    private Label lblTotalMarginAmt = null!;
+    private Label lblMargin1Title = null!, lblMargin2Title = null!, lblMargin3Title = null!;
     private Label lblShippingNote    = null!;   // shows method/ekspedisi
 
-    private NumericUpDown numMargin = null!;
+    private NumericUpDown numMargin1 = null!, numMargin2 = null!, numMargin3 = null!;
     private NumericUpDown numTax    = null!;
     private NumericUpDown numPPh    = null!;
 
@@ -426,10 +430,20 @@ public partial class MainForm : Form
             DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
         });
 
-        // Adj (%) – positive = markup, negative = diskon
+        // 3-tier per-item adjustments (cascading: Adj1 → Adj2 → Adj3)
         dgvItems.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "ColItemAdj", HeaderText = "Adj (%)", FillWeight = 8,
+            Name = "ColItemAdj1", HeaderText = "Adj1 (%)", FillWeight = 7,
+            DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
+        });
+        dgvItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "ColItemAdj2", HeaderText = "Adj2 (%)", FillWeight = 7,
+            DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
+        });
+        dgvItems.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            Name = "ColItemAdj3", HeaderText = "Adj3 (%)", FillWeight = 7,
             DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight }
         });
 
@@ -515,24 +529,24 @@ public partial class MainForm : Form
         AddSummaryRow(pnlSummary, ref y, "Subtotal:", ref lblSubTotal);
         AddSeparator(pnlSummary, ref y);
 
-        // Overall Margin / Diskon
-        lblOverallAdjTitle = AppTheme.MakeLabel("Margin (%):", AppTheme.FontSmall, AppTheme.TextSecondary);
-        lblOverallAdjTitle.Location = new Point(0, y);
-        lblOverallAdjTitle.AutoSize = true;
-        pnlSummary.Controls.Add(lblOverallAdjTitle);
-        y += 20;
+        // ── 3-tier sequential margin ─────────────────────────────────────
+        var lblMarginHeader = AppTheme.MakeLabel("MARGIN / ADJUSTMENT", AppTheme.FontBold, AppTheme.TextSecondary);
+        lblMarginHeader.Location = new Point(0, y); y += 22;
+        pnlSummary.Controls.Add(lblMarginHeader);
 
-        numMargin = new NumericUpDown
-        {
-            Location = new Point(0, y), Width = 200,
-            Minimum = -100, Maximum = 500, DecimalPlaces = 1, Value = _marginPercent,
-            Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
-        };
-        numMargin.ValueChanged += NumMargin_ValueChanged;
-        pnlSummary.Controls.Add(numMargin);
-        y += 30;
+        BuildMarginTierRow(pnlSummary, ref y, 1, _margin1Percent,
+            ref lblMargin1Title, ref numMargin1, ref lblMarginAmt1,
+            (s, e) => { _margin1Percent = numMargin1.Value; UpdateMarginTitles(); RecalcSummary(); });
 
-        AddSummaryRow(pnlSummary, ref y, "Nilai Margin/Diskon:", ref lblMarginAmt);
+        BuildMarginTierRow(pnlSummary, ref y, 2, _margin2Percent,
+            ref lblMargin2Title, ref numMargin2, ref lblMarginAmt2,
+            (s, e) => { _margin2Percent = numMargin2.Value; UpdateMarginTitles(); RecalcSummary(); });
+
+        BuildMarginTierRow(pnlSummary, ref y, 3, _margin3Percent,
+            ref lblMargin3Title, ref numMargin3, ref lblMarginAmt3,
+            (s, e) => { _margin3Percent = numMargin3.Value; UpdateMarginTitles(); RecalcSummary(); });
+
+        AddSummaryRow(pnlSummary, ref y, "Total Margin:", ref lblTotalMarginAmt);
         AddSeparator(pnlSummary, ref y);
 
         // Ongkos Kirim
@@ -667,6 +681,40 @@ public partial class MainForm : Form
         return tb;
     }
 
+    /// <summary>Builds one margin tier row: title + NumericUpDown + value label.</summary>
+    private void BuildMarginTierRow(
+        Panel parent, ref int y, int tier, decimal initialValue,
+        ref Label lblTitle, ref NumericUpDown num, ref Label lblAmt,
+        EventHandler onChanged)
+    {
+        lblTitle = AppTheme.MakeLabel($"Tier {tier} (%):", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblTitle.Location = new Point(0, y);
+        lblTitle.AutoSize = true;
+        parent.Controls.Add(lblTitle);
+        y += 18;
+
+        num = new NumericUpDown
+        {
+            Location = new Point(0, y), Width = 200,
+            Minimum = -100, Maximum = 500, DecimalPlaces = 1, Value = initialValue,
+            Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+        num.ValueChanged += onChanged;
+        parent.Controls.Add(num);
+        y += 28;
+
+        AddSummaryRow(parent, ref y, $"  → Nilai Tier {tier}:", ref lblAmt);
+        y += 2;
+    }
+
+    private void UpdateMarginTitles()
+    {
+        static string Fmt(decimal v) => v == 0 ? "0%" : (v > 0 ? $"+{v:N1}%" : $"{v:N1}%");
+        if (lblMargin1Title != null) lblMargin1Title.Text = $"Tier 1 {Fmt(_margin1Percent)}:";
+        if (lblMargin2Title != null) lblMargin2Title.Text = $"Tier 2 {Fmt(_margin2Percent)}:";
+        if (lblMargin3Title != null) lblMargin3Title.Text = $"Tier 3 {Fmt(_margin3Percent)}:";
+    }
+
     private void AddSummaryRow(Panel parent, ref int y, string label, ref Label valueLabel)
     {
         var lbl = AppTheme.MakeLabel(label, AppTheme.FontSmall, AppTheme.TextSecondary);
@@ -768,7 +816,7 @@ public partial class MainForm : Form
             catch { }
         }
 
-        TryLoad("DefaultMarginPercent", numMargin, ref _marginPercent);
+        TryLoad("DefaultMarginPercent", numMargin1, ref _margin1Percent);
         TryLoad("DefaultTaxPercent",    numTax,    ref _taxPercent);
     }
 
@@ -1010,7 +1058,9 @@ public partial class MainForm : Form
                 ProductName   = name,
                 UnitPrice     = price,
                 Quantity      = 1,
-                AdjPercent    = 0m,
+                Adj1Percent   = 0m,
+                Adj2Percent   = 0m,
+                Adj3Percent   = 0m,
                 Section       = targetSection
             });
         }
@@ -1024,10 +1074,14 @@ public partial class MainForm : Form
     {
         if (e.RowIndex < 0) return;
         // Format Adj column: display "+10.0%" / "-5.0%" / "—"
-        if (e.ColumnIndex == dgvItems.Columns["ColItemAdj"].Index && e.Value is decimal adj)
+        foreach (var colName in new[] { "ColItemAdj1", "ColItemAdj2", "ColItemAdj3" })
         {
-            e.Value             = adj == 0 ? "—" : (adj > 0 ? $"+{adj:N1}%" : $"{adj:N1}%");
-            e.FormattingApplied = true;
+            if (e.ColumnIndex == dgvItems.Columns[colName].Index && e.Value is decimal adj)
+            {
+                e.Value             = adj == 0 ? "—" : (adj > 0 ? $"+{adj:N1}%" : $"{adj:N1}%");
+                e.FormattingApplied = true;
+                break;
+            }
         }
     }
 
@@ -1054,10 +1108,20 @@ public partial class MainForm : Form
             _refreshing = false; // no grid refresh needed for Satuan change
             return;
         }
-        else if (e.ColumnIndex == dgvItems.Columns["ColItemAdj"].Index)
+        else if (e.ColumnIndex == dgvItems.Columns["ColItemAdj1"].Index)
         {
-            if (decimal.TryParse(row.Cells["ColItemAdj"].Value?.ToString(), out var adj))
-                item.AdjPercent = Math.Clamp(adj, -99m, 500m);
+            if (decimal.TryParse(row.Cells["ColItemAdj1"].Value?.ToString(), out var adj))
+                item.Adj1Percent = Math.Clamp(adj, -99m, 500m);
+        }
+        else if (e.ColumnIndex == dgvItems.Columns["ColItemAdj2"].Index)
+        {
+            if (decimal.TryParse(row.Cells["ColItemAdj2"].Value?.ToString(), out var adj))
+                item.Adj2Percent = Math.Clamp(adj, -99m, 500m);
+        }
+        else if (e.ColumnIndex == dgvItems.Columns["ColItemAdj3"].Index)
+        {
+            if (decimal.TryParse(row.Cells["ColItemAdj3"].Value?.ToString(), out var adj))
+                item.Adj3Percent = Math.Clamp(adj, -99m, 500m);
         }
         else if (e.ColumnIndex == dgvItems.Columns["ColItemSection"].Index)
         {
@@ -1078,13 +1142,6 @@ public partial class MainForm : Form
         if (row.Tag is not int itemIdx || itemIdx < 0) return;
         _currentItems.RemoveAt(itemIdx);
         RefreshItemsGrid();
-        RecalcSummary();
-    }
-
-    private void NumMargin_ValueChanged(object? sender, EventArgs e)
-    {
-        _marginPercent = numMargin.Value;
-        lblOverallAdjTitle.Text = _marginPercent >= 0 ? "Margin (%):" : "Diskon (%):";
         RecalcSummary();
     }
 
@@ -1191,7 +1248,7 @@ public partial class MainForm : Form
         var seq       = (existing.Count() + 1).ToString("D3");
         var estNumber = $"EST-{today:yyyyMMdd}-{seq}";
 
-        var (subtotal, overallAdjAmt, ppnAmt, pphAmt, total) = CalcAll();
+        var (subtotal, _, _, _, totalMarginAmt, ppnAmt, pphAmt, total) = CalcAll();
 
         var estimation = new Estimation
         {
@@ -1203,8 +1260,10 @@ public partial class MainForm : Form
             ProjectName       = txtProjectName.Text.Trim(),
             Notes             = txtNotes.Text.Trim(),
             SubTotal          = subtotal,
-            MarginPercent     = _marginPercent,
-            Margin            = overallAdjAmt,
+            MarginPercent     = _margin1Percent,
+            Margin2Percent    = _margin2Percent,
+            Margin3Percent    = _margin3Percent,
+            Margin            = totalMarginAmt,
             ShippingCost      = _shippingCost,
             Tax               = ppnAmt,
             PPhPercent        = _pphPercent,
@@ -1221,7 +1280,9 @@ public partial class MainForm : Form
             Quantity       = item.Quantity,
             Satuan         = item.Satuan,
             UnitPrice      = item.UnitPrice,
-            AdjPercent     = item.AdjPercent,
+            AdjPercent     = item.Adj1Percent,
+            Adj2Percent    = item.Adj2Percent,
+            Adj3Percent    = item.Adj3Percent,
             Section        = item.Section,
             LineTotalPrice = item.LineTotal
         }).ToList();
@@ -1251,12 +1312,12 @@ public partial class MainForm : Form
         try
         {
             var settings = _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "");
-            var (subtotal, overallAdjAmt, ppnAmt, pphAmt, total) = CalcAll();
+            var (subtotal, _, _, _, totalMarginAmt, ppnAmt, pphAmt, total) = CalcAll();
 
             var lineItems = _currentItems
                 .Select(i => new PdfQuotationExport.LineItem(
                     i.ReferenceCode, i.ProductName, i.Section, i.Quantity,
-                    i.Satuan, i.UnitPrice, i.AdjPercent, i.LineTotal))
+                    i.Satuan, i.UnitPrice, i.Adj1Percent, i.LineTotal))
                 .ToList();
 
             PdfQuotationExport.Generate(
@@ -1270,8 +1331,8 @@ public partial class MainForm : Form
                 notes:            "",
                 items:            lineItems,
                 subtotal:         subtotal,
-                marginPercent:    _marginPercent,
-                marginAmount:     overallAdjAmt,
+                marginPercent:    _margin1Percent,
+                marginAmount:     totalMarginAmt,
                 shippingCost:     _shippingCost,
                 taxPercent:       _taxPercent,
                 taxAmount:        ppnAmt,
@@ -1349,7 +1410,7 @@ public partial class MainForm : Form
             if (sectionItems.Count == 0)
             {
                 int pIdx = dgvItems.Rows.Add("", "— Belum ada item. Klik 2x produk untuk menambahkan —",
-                    "", "", "", "", "", "");
+                    "", "", "", "", "", "", "", "");
                 var pRow = dgvItems.Rows[pIdx];
                 pRow.ReadOnly = true;
                 pRow.DefaultCellStyle.BackColor = rowBg;
@@ -1365,11 +1426,13 @@ public partial class MainForm : Form
                 int rIdx = dgvItems.Rows.Add(
                     item.ReferenceCode,
                     item.ProductName,
-                    item.Section,           // ComboBox column value
+                    item.Section,
                     item.Quantity,
-                    item.Satuan,            // unit of measure
+                    item.Satuan,
                     FormatRupiah(item.UnitPrice),
-                    item.AdjPercent,        // raw decimal → formatted via CellFormatting
+                    item.Adj1Percent,        // raw decimal → formatted via CellFormatting
+                    item.Adj2Percent,
+                    item.Adj3Percent,
                     FormatRupiah(item.LineTotal)
                 );
                 var iRow = dgvItems.Rows[rIdx];
@@ -1382,37 +1445,42 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Core calculation:
+    /// Core calculation with 3-tier sequential margin:
     ///   subtotal         = Σ item.LineTotal (per-item adj already included)
-    ///   overallAdjAmt    = subtotal × marginPercent / 100  (can be negative = diskon)
-    ///   preTax           = subtotal + overallAdjAmt + shipping
+    ///   after1..3        = compounding tiers (×1.m1 ×1.m2 ×1.m3)
+    ///   preTax           = after3 + shipping
     ///   ppnAmt           = preTax × ppnPct / 100
     ///   pphAmt           = preTax × pphPct / 100  (withheld, deducted from total)
     ///   total            = preTax + ppnAmt - pphAmt
     /// </summary>
-    private (decimal subtotal, decimal overallAdjAmt, decimal ppnAmt, decimal pphAmt, decimal total) CalcAll()
+    private (decimal subtotal,
+             decimal tier1Amt, decimal tier2Amt, decimal tier3Amt, decimal totalMarginAmt,
+             decimal ppnAmt, decimal pphAmt, decimal total) CalcAll()
     {
-        var subtotal      = _currentItems.Sum(i => i.LineTotal);
-        var overallAdjAmt = subtotal * _marginPercent / 100m;
-        var preTax        = subtotal + overallAdjAmt + _shippingCost;
-        var ppnAmt        = preTax * _taxPercent / 100m;
-        var pphAmt        = preTax * _pphPercent / 100m;
-        var total         = preTax + ppnAmt - pphAmt;
-        return (subtotal, overallAdjAmt, ppnAmt, pphAmt, total);
+        var subtotal = _currentItems.Sum(i => i.LineTotal);
+        var (t1, t2, t3, totalMargin, afterMargin) =
+            _calcService.ApplyMargin3Tier(subtotal, _margin1Percent, _margin2Percent, _margin3Percent);
+        var preTax = afterMargin + _shippingCost;
+        var ppnAmt = preTax * _taxPercent  / 100m;
+        var pphAmt = preTax * _pphPercent / 100m;
+        var total  = preTax + ppnAmt - pphAmt;
+        return (subtotal, t1, t2, t3, totalMargin, ppnAmt, pphAmt, total);
     }
 
     private void RecalcSummary()
     {
-        var (subtotal, overallAdjAmt, ppnAmt, pphAmt, total) = CalcAll();
+        var (subtotal, t1Amt, t2Amt, t3Amt, totalMargin, ppnAmt, pphAmt, total) = CalcAll();
 
-        lblSubTotal.Text  = FormatRupiah(subtotal);
-        lblMarginAmt.Text = FormatRupiah(overallAdjAmt);
-        lblShipping.Text  = FormatRupiah(_shippingCost);
-        lblTax.Text       = FormatRupiah(ppnAmt);
-        lblPPh.Text       = FormatRupiah(pphAmt);
-        lblTotal.Text     = FormatRupiah(total);
-
-        lblOverallAdjTitle.Text = _marginPercent >= 0 ? "Margin (%):" : "Diskon (%):";
+        UpdateMarginTitles();
+        lblSubTotal.Text      = FormatRupiah(subtotal);
+        lblMarginAmt1.Text    = FormatRupiah(t1Amt);
+        lblMarginAmt2.Text    = FormatRupiah(t2Amt);
+        lblMarginAmt3.Text    = FormatRupiah(t3Amt);
+        lblTotalMarginAmt.Text= FormatRupiah(totalMargin);
+        lblShipping.Text      = FormatRupiah(_shippingCost);
+        lblTax.Text           = FormatRupiah(ppnAmt);
+        lblPPh.Text           = FormatRupiah(pphAmt);
+        lblTotal.Text         = FormatRupiah(total);
     }
 
     private void LoadEstimationIntoCalculator(Estimation est)
@@ -1428,7 +1496,9 @@ public partial class MainForm : Form
                 UnitPrice     = d.UnitPrice,
                 Quantity      = d.Quantity,
                 Satuan        = string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
-                AdjPercent    = d.AdjPercent,
+                Adj1Percent   = d.AdjPercent,
+                Adj2Percent   = d.Adj2Percent,
+                Adj3Percent   = d.Adj3Percent,
                 Section       = string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section
             });
         }
@@ -1436,8 +1506,12 @@ public partial class MainForm : Form
         // Restore overall percentages stored in the estimation
         try
         {
-            numMargin.Value   = Math.Clamp(est.MarginPercent, numMargin.Minimum, numMargin.Maximum);
-            _marginPercent    = numMargin.Value;
+            numMargin1.Value  = Math.Clamp(est.MarginPercent,  numMargin1.Minimum, numMargin1.Maximum);
+            numMargin2.Value  = Math.Clamp(est.Margin2Percent, numMargin2.Minimum, numMargin2.Maximum);
+            numMargin3.Value  = Math.Clamp(est.Margin3Percent, numMargin3.Minimum, numMargin3.Maximum);
+            _margin1Percent   = numMargin1.Value;
+            _margin2Percent   = numMargin2.Value;
+            _margin3Percent   = numMargin3.Value;
             numTax.Value      = Math.Clamp(est.Tax > 0 && est.SubTotal > 0
                 ? Math.Round(est.Tax / (est.SubTotal + est.Margin + est.ShippingCost) * 100, 1)
                 : 11m, numTax.Minimum, numTax.Maximum);
@@ -1511,12 +1585,20 @@ public class EstimationLineItem
     /// <summary>Unit of measurement, manually entered (e.g. pcs, set, meter, rol)</summary>
     public string  Satuan        { get; set; } = "pcs";
 
-    /// <summary>Per-item adjustment: positive = markup %, negative = diskon %</summary>
-    public decimal AdjPercent { get; set; } = 0m;
+    /// <summary>Per-item adjustment tier 1: positive = markup %, negative = diskon %</summary>
+    public decimal Adj1Percent { get; set; } = 0m;
+
+    /// <summary>Per-item adjustment tier 2</summary>
+    public decimal Adj2Percent { get; set; } = 0m;
+
+    /// <summary>Per-item adjustment tier 3</summary>
+    public decimal Adj3Percent { get; set; } = 0m;
 
     /// <summary>Material Utama | Material Pendukung | Material Lainnya</summary>
     public string Section { get; set; } = "Material Utama";
 
-    public decimal EffectiveUnitPrice => UnitPrice * (1 + AdjPercent / 100m);
-    public decimal LineTotal          => EffectiveUnitPrice * Quantity;
+    /// <summary>Cascading 3-tier: UnitPrice × (1+Adj1/100) × (1+Adj2/100) × (1+Adj3/100)</summary>
+    public decimal EffectiveUnitPrice =>
+        UnitPrice * (1m + Adj1Percent / 100m) * (1m + Adj2Percent / 100m) * (1m + Adj3Percent / 100m);
+    public decimal LineTotal => EffectiveUnitPrice * Quantity;
 }
