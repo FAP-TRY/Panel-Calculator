@@ -1,19 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
-title Build Installer — Kalkulator Panel Tritunggal Swarna
+title Build Installer - Kalkulator Panel Tritunggal Swarna
 
 echo.
 echo  ============================================================
-echo   BUILD INSTALLER  ^|  Kalkulator Panel Tritunggal Swarna
+echo   BUILD INSTALLER  -  Kalkulator Panel Tritunggal Swarna
 echo  ============================================================
 echo.
 
-:: ── Locate project root (one level up from Installer\) ──────────
+:: Locate project root (one level up from Installer\)
 set "ROOT=%~dp0.."
 set "INSTALLER=%~dp0"
 cd /d "%INSTALLER%"
 
-:: ── Locate Inno Setup compiler ───────────────────────────────────
+:: ---- Locate Inno Setup compiler ---------------------------------
 set "ISCC="
 for %%P in (
     "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
@@ -25,7 +25,6 @@ for %%P in (
         goto :found_inno
     )
 )
-
 echo [ERROR] Inno Setup tidak ditemukan!
 echo.
 echo  Unduh dan install Inno Setup 6 (gratis) dari:
@@ -37,7 +36,7 @@ exit /b 1
 :found_inno
 echo [OK] Inno Setup  : %ISCC%
 
-:: ── Check .NET SDK ───────────────────────────────────────────────
+:: ---- Check .NET SDK ---------------------------------------------
 dotnet --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] .NET SDK tidak ditemukan. Install dari https://dotnet.microsoft.com
@@ -47,26 +46,33 @@ if errorlevel 1 (
 for /f "tokens=*" %%v in ('dotnet --version') do set "DOTNET_VER=%%v"
 echo [OK] .NET SDK     : %DOTNET_VER%
 
-:: ── Install / update Obfuscar global tool ────────────────────────
+:: ---- Install / locate Obfuscar ----------------------------------
 echo.
 echo [1/5] Memeriksa Obfuscar...
-dotnet tool install --global Obfuscar.GlobalTool >nul 2>&1
-if errorlevel 1 (
-    dotnet tool update --global Obfuscar.GlobalTool >nul 2>&1
-)
-obfuscar.exe --version >nul 2>&1
-if errorlevel 1 (
-    echo [WARN] Obfuscar tidak ditemukan di PATH.
-    echo        Coba tutup dan buka kembali Command Prompt, lalu jalankan ulang.
-    echo        Melanjutkan tanpa obfuscation...
-    set "SKIP_OBF=1"
-) else (
-    for /f "tokens=*" %%v in ('obfuscar.exe --version 2^>^&1') do set "OBF_VER=%%v"
-    echo [OK] Obfuscar     : !OBF_VER!
-    set "SKIP_OBF=0"
+
+:: dotnet global tools install to %USERPROFILE%\.dotnet\tools\
+:: The tool name is obfuscar.console.exe (not obfuscar.exe)
+set "DOTNET_TOOLS=%USERPROFILE%\.dotnet\tools"
+set "OBF_EXE=%DOTNET_TOOLS%\obfuscar.console.exe"
+
+if not exist "%OBF_EXE%" (
+    echo        Menginstall Obfuscar...
+    dotnet tool install --global Obfuscar.GlobalTool
 )
 
-:: ── Clean previous build artifacts ───────────────────────────────
+:: Try update silently
+dotnet tool update --global Obfuscar.GlobalTool >nul 2>&1
+
+if exist "%OBF_EXE%" (
+    for /f "tokens=*" %%v in ('"%OBF_EXE%" --version 2^>^&1') do set "OBF_VER=%%v"
+    echo [OK] Obfuscar     : !OBF_VER!
+    set "SKIP_OBF=0"
+) else (
+    echo [WARN] Obfuscar tidak ditemukan. Melanjutkan tanpa obfuscation...
+    set "SKIP_OBF=1"
+)
+
+:: ---- Clean previous artifacts -----------------------------------
 echo.
 echo [2/5] Membersihkan hasil build sebelumnya...
 if exist "app-raw"   rmdir /s /q "app-raw"
@@ -75,7 +81,7 @@ if exist "app-final" rmdir /s /q "app-final"
 if exist "Output"    rmdir /s /q "Output"
 echo [OK] Bersih.
 
-:: ── Publish multi-file self-contained ────────────────────────────
+:: ---- Publish multi-file self-contained --------------------------
 echo.
 echo [3/5] Mempublish aplikasi (self-contained, multi-file)...
 echo       Ini mungkin memakan waktu 1-2 menit...
@@ -95,10 +101,10 @@ if errorlevel 1 (
 )
 echo [OK] Publish selesai.
 
-:: ── Obfuscate app assemblies ──────────────────────────────────────
+:: ---- Obfuscate app assemblies -----------------------------------
 if "%SKIP_OBF%"=="1" (
     echo.
-    echo [4/5] Obfuscation DILEWATI ^(Obfuscar tidak tersedia^).
+    echo [4/5] Obfuscation DILEWATI.
     echo       Menyalin langsung ke app-final...
     xcopy /e /i /q "app-raw" "app-final" >nul
     goto :package
@@ -106,17 +112,15 @@ if "%SKIP_OBF%"=="1" (
 
 echo.
 echo [4/5] Menjalankan Obfuscar...
-:: Obfuscar reads InPath/OutPath from obfuscar.xml
-obfuscar.exe obfuscar.xml
+"%OBF_EXE%" obfuscar.xml
 if errorlevel 1 (
-    echo [WARN] Obfuscar selesai dengan peringatan.
-    echo        Memeriksa apakah output tersedia...
+    echo [WARN] Obfuscar selesai dengan peringatan - memeriksa output...
 )
 
-:: Merge: start with all raw files, then overwrite app DLLs with obfuscated ones
+:: Merge: copy all runtime files from app-raw, then overwrite
+:: app DLLs with obfuscated versions from app-obf
 xcopy /e /i /q "app-raw" "app-final" >nul
 
-:: Overwrite only the 3 app DLLs with obfuscated versions
 for %%F in (
     PanelCalculator.WinForms.dll
     PanelCalculator.Core.dll
@@ -126,42 +130,39 @@ for %%F in (
         copy /y "app-obf\%%F" "app-final\%%F" >nul
         echo [OK] Obfuscated: %%F
     ) else (
-        echo [WARN] %%F tidak ditemukan di output Obfuscar, menggunakan original.
+        echo [WARN] %%F tidak ada di output Obfuscar - menggunakan original.
     )
 )
 
-:: Remove PDB files from final build (don't ship debug symbols)
+:: Remove PDB debug symbols (do not ship)
 del /q "app-final\*.pdb" 2>nul
-
 echo [OK] Obfuscation selesai.
 
 :package
-:: ── Compile Inno Setup installer ─────────────────────────────────
+:: ---- Compile Inno Setup installer -------------------------------
 echo.
 echo [5/5] Mengompilasi installer dengan Inno Setup...
-"%ISCC%" "PanelCalculatorSetup.iss" /Q
+"%ISCC%" "PanelCalculatorSetup.iss"
 if errorlevel 1 (
-    echo [ERROR] Inno Setup gagal!
+    echo.
+    echo [ERROR] Inno Setup gagal! Periksa pesan error di atas.
     pause
     exit /b 1
 )
 
-:: ── Done ──────────────────────────────────────────────────────────
+:: ---- Done -------------------------------------------------------
 echo.
 echo  ============================================================
 echo   SELESAI!
 echo  ============================================================
 echo.
 echo  File installer:
-for %%F in ("Output\*.exe") do echo    %%~fF
-echo.
-echo  Ukuran file:
 for %%F in ("Output\*.exe") do (
-    set /a SIZE=%%~zF / 1048576
-    echo    %%~nxF  ^(!SIZE! MB^)
+    echo    %%~fF
+    set /a SIZEMB=%%~zF / 1048576
+    echo    Ukuran: !SIZEMB! MB
 )
 echo.
-
 set /p OPEN=Buka folder Output? [Y/N]:
 if /i "%OPEN%"=="Y" explorer "Output"
 
