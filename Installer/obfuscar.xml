@@ -1,0 +1,59 @@
+<?xml version='1.0'?>
+<!--
+  Obfuscar configuration — Kalkulator Panel Tritunggal Swarna
+  Processes ONLY the 3 app assemblies (not .NET runtime DLLs).
+
+  Strategy (safe for WinForms + EF Core + DI):
+    ✅ Rename methods & fields       — main protection layer
+    ✅ Hide / encrypt strings         — hides DB path, error messages, etc.
+    ✅ Suppress ILdasm attribute      — prevents .NET disassembler hint
+    ✅ Control flow obfuscation        — scrambles if/while/switch logic
+    ⚠ RenameTypes = false             — kept OFF: DI container & EF Core
+                                        use Type objects; safe to rename but
+                                        set to false to avoid any edge cases.
+    ⚠ RenameProperties = false        — kept OFF: WinForms data-binding and
+                                        EF Core model builder use property names.
+-->
+<Obfuscator>
+
+  <!-- ── I/O paths (set by build.bat via command-line vars) ── -->
+  <Var name="InPath"  value=".\app-raw" />
+  <Var name="OutPath" value=".\app-obf" />
+
+  <!-- ── Global switches ──────────────────────────────────── -->
+  <!-- Rename methods inside each assembly -->
+  <Var name="RenameMethods"    value="true" />
+  <!-- Rename private/internal fields -->
+  <Var name="RenameFields"     value="true" />
+  <!-- Keep property names (data-binding / EF Core reflection) -->
+  <Var name="RenameProperties" value="false" />
+  <!-- Keep type names (DI container / EF Core / attributes)  -->
+  <Var name="RenameTypes"      value="false" />
+  <!-- Encrypt string literals in IL -->
+  <Var name="HideStrings"      value="true" />
+  <!-- Mark assembly so ILSpy/ILdasm shows obfuscation warning -->
+  <Var name="SuppressILdasm"   value="true" />
+  <!-- Keep public API surface (set false = obfuscate more) -->
+  <Var name="KeepPublicApi"    value="false" />
+  <!-- Obfuscate event handlers -->
+  <Var name="UseUnicodeNames"  value="false" />
+
+  <!-- ── Assemblies to obfuscate ───────────────────────────── -->
+  <!--
+    Only process OUR code. The 300+ .NET runtime DLLs are
+    left untouched — Obfuscar only reads them as references.
+  -->
+  <Module file="$(InPath)\PanelCalculator.WinForms.dll">
+    <!--
+      Skip: Program.Main must keep [STAThread] attribute wiring.
+      Skip: Form constructors called by DI container.
+      Obfuscar skips [System.Reflection.ObfuscationAttribute]
+      decorated members automatically.
+    -->
+  </Module>
+
+  <Module file="$(InPath)\PanelCalculator.Core.dll" />
+
+  <Module file="$(InPath)\PanelCalculator.Data.dll" />
+
+</Obfuscator>

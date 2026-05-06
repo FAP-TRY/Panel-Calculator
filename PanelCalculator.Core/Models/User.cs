@@ -1,5 +1,8 @@
+using System.Reflection;
+
 namespace PanelCalculator.Core.Models;
 
+[Obfuscation(Exclude = false, ApplyToMembers = true, Feature = "renaming")]
 public class User
 {
     public int    UserId       { get; set; }
@@ -8,6 +11,6 @@ public class User
     public string FullName     { get; set; } = "";
     public string Role         { get; set; } = "Operator"; // Admin | Operator
     public bool   IsActive     { get; set; } = true;
-    public DateTime CreatedDate   { get; set; } = DateTime.UtcNow;
+    public DateTime  CreatedDate   { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginDate { get; set; }
 }

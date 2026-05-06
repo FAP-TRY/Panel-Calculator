@@ -5,11 +5,15 @@ using PanelCalculator.Core.Services;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
 using PanelCalculator.WinForms.Forms;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace PanelCalculator.WinForms;
 
+// [Obfuscation] on the class tells Obfuscar to skip renaming
+// Main() because WinExe entry points must keep their signature.
+[Obfuscation(Exclude = true, ApplyToMembers = false)]
 static class Program
 {
     [STAThread]

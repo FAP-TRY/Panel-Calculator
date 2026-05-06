@@ -1,5 +1,8 @@
+using System.Reflection;
+
 namespace PanelCalculator.Core.Models;
 
+[Obfuscation(Exclude = false, ApplyToMembers = true, Feature = "renaming")]
 public class EstimationDetail
 {
     public int DetailId { get; set; }

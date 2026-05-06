@@ -1,5 +1,10 @@
+using System.Reflection;
+
 namespace PanelCalculator.Core.Models;
 
+// EF Core maps columns by property name via reflection.
+// [Obfuscation] tells Obfuscar to leave property names intact.
+[Obfuscation(Exclude = false, ApplyToMembers = true, Feature = "renaming")]
 public class Product
 {
     public int ProductId { get; set; }
