@@ -256,7 +256,25 @@ public partial class MainForm : Form
         btnAddProduct.FlatAppearance.MouseOverBackColor = Color.FromArgb(5, 150, 105);
         btnAddProduct.Click += BtnAddProduct_Click;
 
+        var btnExportProd = new Button
+        {
+            Text      = "📤 Export",
+            Dock      = DockStyle.Right,
+            Width     = 82,
+            Height    = 26,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(55, 65, 81),
+            ForeColor = Color.White,
+            Font      = AppTheme.FontSmall,
+            Cursor    = Cursors.Hand
+        };
+        btnExportProd.FlatAppearance.BorderSize = 0;
+        btnExportProd.FlatAppearance.MouseOverBackColor = Color.FromArgb(75, 85, 99);
+        btnExportProd.Click += BtnExportProducts_Click;
+
+        // DockStyle.Right: last-added appears leftmost → Export left of Tambah
         pnlTitleRow.Controls.Add(btnAddProduct);
+        pnlTitleRow.Controls.Add(btnExportProd);
         pnlTitleRow.Controls.Add(lblPanelTitle);
 
         var lblCat = AppTheme.MakeLabel("Kategori:", AppTheme.FontSmall, AppTheme.TextSecondary);
@@ -816,6 +834,144 @@ public partial class MainForm : Form
             MessageBox.Show($"Gagal menyimpan produk:\n{ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    // ── Export Produk ─────────────────────────────────────────────────────
+    private async void BtnExportProducts_Click(object? sender, EventArgs e)
+    {
+        // Determine which products to export
+        bool filtered = dgvProducts.Rows.Count > 0 &&
+                        (!string.IsNullOrWhiteSpace(txtSearch.Text) ||
+                         (cmbCategory.SelectedItem?.ToString() is string c && c != "— Semua Kategori —") ||
+                         (cmbVendor.SelectedItem?.ToString()   is string v && v != "— Semua Merk —"));
+
+        string scope = "semua";
+        if (filtered)
+        {
+            var pick = MessageBox.Show(
+                $"Ekspor {dgvProducts.Rows.Count} produk yang sedang ditampilkan,\n" +
+                "atau semua produk di database?\n\n" +
+                "  [Yes] = Yang ditampilkan\n  [No]  = Semua produk",
+                "Pilih Cakupan Export",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            if (pick == DialogResult.Cancel) return;
+            scope = pick == DialogResult.Yes ? "filtered" : "semua";
+        }
+
+        using var sfd = new SaveFileDialog
+        {
+            Title       = "Simpan Data Produk",
+            Filter      = "Excel (*.xlsx)|*.xlsx|CSV (*.csv)|*.csv",
+            FilterIndex = 1,
+            FileName    = $"Produk_{DateTime.Now:yyyyMMdd}"
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            List<Product> products;
+            if (scope == "filtered")
+            {
+                // Collect product IDs shown in the grid
+                var ids = dgvProducts.Rows
+                    .Cast<DataGridViewRow>()
+                    .Select(r => r.Cells["ColProductId"].Value is int id ? id : 0)
+                    .Where(id => id > 0)
+                    .ToHashSet();
+                products = _context.Products
+                    .Where(p => ids.Contains(p.ProductId))
+                    .OrderBy(p => p.Category).ThenBy(p => p.ProductName)
+                    .ToList();
+            }
+            else
+            {
+                products = await Task.Run(() =>
+                    _context.Products
+                        .OrderBy(p => p.Category).ThenBy(p => p.ProductName)
+                        .ToList());
+            }
+
+            var ext = Path.GetExtension(sfd.FileName).ToLowerInvariant();
+            if (ext == ".xlsx")
+                ExportToExcel(sfd.FileName, products);
+            else
+                ExportToCsv(sfd.FileName, products);
+
+            SetStatus($"Export selesai — {products.Count} produk disimpan ke {Path.GetFileName(sfd.FileName)}");
+            if (MessageBox.Show(
+                    $"Berhasil mengekspor {products.Count} produk.\n\nBuka file sekarang?",
+                    "Export Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal mengekspor:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static void ExportToCsv(string path, List<Product> products)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("category,reference_code,product_name,specifications,price,price_year,stock_status,vendor");
+        foreach (var p in products)
+        {
+            static string Q(string? s) => s == null ? "" : $"\"{s.Replace("\"", "\"\"")}\"";
+            sb.AppendLine(string.Join(",",
+                Q(p.Category),
+                Q(p.ReferenceCode),
+                Q(p.ProductName),
+                Q(p.Specifications),
+                p.Price.ToString("0"),
+                p.PriceYear.HasValue ? p.PriceYear.Value.ToString() : "",
+                p.StockStatus.ToString(),
+                Q(p.Vendor)));
+        }
+        File.WriteAllText(path, sb.ToString(), System.Text.Encoding.UTF8);
+    }
+
+    private static void ExportToExcel(string path, List<Product> products)
+    {
+        using var wb = new ClosedXML.Excel.XLWorkbook();
+        var ws = wb.Worksheets.Add("Produk");
+
+        // Header row
+        string[] headers = { "category","reference_code","product_name","specifications",
+                              "price","price_year","stock_status","vendor" };
+        for (int c = 0; c < headers.Length; c++)
+        {
+            var cell = ws.Cell(1, c + 1);
+            cell.Value = headers[c];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#1e40af");
+            cell.Style.Font.FontColor       = ClosedXML.Excel.XLColor.White;
+        }
+
+        // Data rows
+        for (int r = 0; r < products.Count; r++)
+        {
+            var p = products[r];
+            int row = r + 2;
+            ws.Cell(row, 1).Value = p.Category;
+            ws.Cell(row, 2).Value = p.ReferenceCode;
+            ws.Cell(row, 3).Value = p.ProductName;
+            ws.Cell(row, 4).Value = p.Specifications ?? "";
+            ws.Cell(row, 5).Value = (double)p.Price;
+            ws.Cell(row, 6).Value = p.PriceYear.HasValue ? p.PriceYear.Value.ToString() : "";
+            ws.Cell(row, 7).Value = p.StockStatus;
+            ws.Cell(row, 8).Value = p.Vendor ?? "";
+
+            // Price column: number format
+            ws.Cell(row, 5).Style.NumberFormat.Format = "#,##0";
+            // Alternating row color
+            if (r % 2 == 1)
+                ws.Row(row).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#f8fafc");
+        }
+
+        ws.Columns().AdjustToContents();
+        // Freeze header row
+        ws.SheetView.FreezeRows(1);
+        wb.SaveAs(path);
     }
 
     private void DgvProducts_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
