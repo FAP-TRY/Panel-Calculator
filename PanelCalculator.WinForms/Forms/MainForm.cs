@@ -60,7 +60,7 @@ public partial class MainForm : Form
     private DateTimePicker dtpEstOrderDate  = null!;
 
     private Button btnSave = null!, btnNew = null!, btnHistory = null!;
-    private Button btnExport = null!, btnReports = null!, btnSettings = null!;
+    private Button btnReports = null!, btnSettings = null!;
     private Button btnDashboard = null!;
     private Label  lblStatus = null!;
 
@@ -143,18 +143,16 @@ public partial class MainForm : Form
         btnDashboard = MakeToolbarButton("📊 Dashboard",     Color.FromArgb(55, 65, 81),  120);
         btnNew      = MakeToolbarButton("＋ Estimasi Baru", Color.FromArgb(59, 130, 246), 140);
         btnHistory  = MakeToolbarButton("📋 Riwayat",       Color.FromArgb(55, 65, 81),  110);
-        btnExport   = MakeToolbarButton("📄 Export PDF",    Color.FromArgb(55, 65, 81),  120);
         btnReports  = MakeToolbarButton("📊 Laporan",       Color.FromArgb(55, 65, 81),  110);
         btnSettings = MakeToolbarButton("⚙ Settings",       Color.FromArgb(55, 65, 81),  110);
 
         btnDashboard.Click += BtnDashboard_Click;
         btnNew.Click      += BtnNew_Click;
         btnHistory.Click  += BtnHistory_Click;
-        btnExport.Click   += BtnExport_Click;
         btnReports.Click  += BtnReports_Click;
         btnSettings.Click += BtnSettings_Click;
 
-        btnFlow.Controls.AddRange(new Control[] { btnDashboard, btnNew, btnHistory, btnExport, btnReports, btnSettings });
+        btnFlow.Controls.AddRange(new Control[] { btnDashboard, btnNew, btnHistory, btnReports, btnSettings });
         btnAreaPanel.Controls.Add(btnFlow);
 
         // Right-align the flow panel whenever the container resizes

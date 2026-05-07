@@ -22,7 +22,6 @@ public class DashboardForm : Form
         ("Selesai Dihitung", "Selesai Dihitung", "✅", Color.FromArgb(37,  99,  235)),  // blue
         ("Menunggu Approve", "Menunggu Approve", "👀", Color.FromArgb(217, 119,   6)),  // amber
         ("Sudah Diapprove",  "Sudah Diapprove",  "🎯", Color.FromArgb( 5,  150, 105)),  // emerald
-        ("Won",              "Selesai / Won",    "🏆", Color.FromArgb( 21,  128,  61)),  // green
     };
 
     private const int CardWidth   = 230;
@@ -173,7 +172,27 @@ public class DashboardForm : Form
             AutoSize  = true
         };
 
-        pnlHeader.Controls.AddRange(new Control[] { lblIcon, lblColTitle, _colCount[idx] });
+        // "＋ Tambah" button only on the Antri Hitung column (idx == 0)
+        var headerControls = new List<Control> { lblIcon, lblColTitle, _colCount[idx] };
+        if (idx == 0)
+        {
+            var btnAdd = new Button
+            {
+                Text      = "＋ Tambah",
+                Location  = new Point(CardWidth - 72, 14),
+                Width     = 70,
+                Height    = 24,
+                Font      = new Font("Segoe UI", 7.5f),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = stage.Accent,
+                ForeColor = Color.White,
+                Cursor    = Cursors.Hand
+            };
+            btnAdd.FlatAppearance.BorderSize = 0;
+            btnAdd.Click += (s, e) => OpenAddQueueDialog();
+            headerControls.Add(btnAdd);
+        }
+        pnlHeader.Controls.AddRange(headerControls.ToArray());
 
         // Scrollable card flow
         _colFlows[idx] = new FlowLayoutPanel
@@ -209,10 +228,10 @@ public class DashboardForm : Form
                 .ToList();
 
             // Update summary
-            var won    = ests.Where(e => e.Status == "Won").Sum(e => e.TotalPrice);
-            var total  = ests.Count;
-            var active = ests.Count(e => e.Status != "Won" && e.Status != "Lost");
-            lblSummary.Text = $"Total: {total} estimasi  |  Aktif: {active}  |  Revenue Won: {FmtRp(won)}";
+            var total     = ests.Count;
+            var antri     = ests.Count(e => e.Status == "Antri Hitung");
+            var diapprove = ests.Count(e => e.Status == "Sudah Diapprove");
+            lblSummary.Text = $"Total: {total} estimasi  |  Antri: {antri}  |  Diapprove: {diapprove}";
 
             // Clear columns
             foreach (var f in _colFlows) f.Controls.Clear();
@@ -431,6 +450,55 @@ public class DashboardForm : Form
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════
+    //  TAMBAH ANTRI HITUNG
+    // ════════════════════════════════════════════════════════════════════
+    private void OpenAddQueueDialog()
+    {
+        using var dlg = new AddQueueDialog();
+        if (dlg.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            // Auto-generate estimation number
+            var today  = DateTime.Now;
+            var same   = _context.Estimations
+                .Where(e => e.CreatedDate >= today.Date.ToUniversalTime()
+                         && e.CreatedDate <  today.Date.AddDays(1).ToUniversalTime())
+                .Count();
+            var seq    = (same + 1).ToString("D3");
+            var estNo  = $"EST-{today:yyyyMMdd}-{seq}";
+
+            var est = new Estimation
+            {
+                EstimationNumber   = estNo,
+                ClientName         = dlg.ClientName,
+                Company            = dlg.CompanyName,
+                Notes              = dlg.Notes,
+                EstimatedOrderDate = dlg.EstOrderDate,
+                Status             = "Antri Hitung",
+                CreatedDate        = today.ToUniversalTime(),
+                SubTotal           = 0,
+                Margin             = 0,
+                MarginPercent      = 0,
+                ShippingCost       = 0,
+                Tax                = 0,
+                TotalPrice         = 0
+            };
+
+            _context.Estimations.Add(est);
+            _context.SaveChanges();
+
+            LoadData();
+            SetStatus($"'{dlg.ClientName}' ditambahkan ke Antri Hitung ({estNo}).");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Gagal menyimpan: " + ex.Message, "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private void SetStatus(string msg)
     {
         // flash status in summary label briefly
@@ -449,4 +517,106 @@ public class DashboardForm : Form
 
     private static string FmtRp(decimal v)
         => "Rp " + v.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("id-ID"));
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  Dialog: Tambah Antri Hitung
+// ════════════════════════════════════════════════════════════════════════
+public class AddQueueDialog : Form
+{
+    public string   ClientName  { get; private set; } = "";
+    public string?  CompanyName { get; private set; }
+    public string?  Notes       { get; private set; }
+    public DateTime? EstOrderDate { get; private set; }
+
+    private TextBox        _txtClient  = null!;
+    private TextBox        _txtCompany = null!;
+    private TextBox        _txtNotes   = null!;
+    private DateTimePicker _dtpOrder   = null!;
+    private CheckBox       _chkDate    = null!;
+
+    public AddQueueDialog()
+    {
+        Text            = "Tambah Antri Hitung";
+        Size            = new Size(420, 340);
+        MinimumSize     = new Size(380, 320);
+        StartPosition   = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox     = false;
+        BackColor       = AppTheme.Background;
+
+        // ── Fields ────────────────────────────────────────────────────
+        var lblClient = AppTheme.MakeLabel("Nama Klien *", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblClient.Location = new Point(20, 20); lblClient.AutoSize = true;
+        _txtClient = new TextBox { Location = new Point(20, 38), Width = 360, PlaceholderText = "Nama klien..." };
+        AppTheme.StyleTextBox(_txtClient);
+
+        var lblCompany = AppTheme.MakeLabel("Perusahaan", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblCompany.Location = new Point(20, 72); lblCompany.AutoSize = true;
+        _txtCompany = new TextBox { Location = new Point(20, 90), Width = 360, PlaceholderText = "Nama perusahaan (opsional)..." };
+        AppTheme.StyleTextBox(_txtCompany);
+
+        var lblNotes = AppTheme.MakeLabel("Keterangan / Deskripsi Pekerjaan", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblNotes.Location = new Point(20, 124); lblNotes.AutoSize = true;
+        _txtNotes = new TextBox
+        {
+            Location    = new Point(20, 142),
+            Width       = 360,
+            Height      = 54,
+            Multiline   = true,
+            ScrollBars  = ScrollBars.Vertical,
+            PlaceholderText = "Deskripsi pekerjaan yang perlu dihitung..."
+        };
+        AppTheme.StyleTextBox(_txtNotes);
+
+        _chkDate = new CheckBox
+        {
+            Text      = "Estimasi tanggal order:",
+            Location  = new Point(20, 204),
+            AutoSize  = true,
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.TextSecondary
+        };
+        _dtpOrder = new DateTimePicker
+        {
+            Location = new Point(180, 200),
+            Width    = 200,
+            Format   = DateTimePickerFormat.Short,
+            Enabled  = false
+        };
+        _chkDate.CheckedChanged += (s, e) => _dtpOrder.Enabled = _chkDate.Checked;
+
+        // ── Buttons ───────────────────────────────────────────────────
+        var btnOk = new Button { Text = "＋ Tambahkan", Location = new Point(20, 244), Width = 150, Height = 36 };
+        AppTheme.StyleButton(btnOk, AppTheme.Primary, Color.White);
+        btnOk.Click += (s, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(_txtClient.Text))
+            {
+                MessageBox.Show("Nama klien tidak boleh kosong.", "Perhatian",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                _txtClient.Focus();
+                return;
+            }
+            ClientName   = _txtClient.Text.Trim();
+            CompanyName  = string.IsNullOrWhiteSpace(_txtCompany.Text) ? null : _txtCompany.Text.Trim();
+            Notes        = string.IsNullOrWhiteSpace(_txtNotes.Text)   ? null : _txtNotes.Text.Trim();
+            EstOrderDate = _chkDate.Checked ? _dtpOrder.Value.ToUniversalTime() : null;
+            DialogResult = DialogResult.OK;
+            Close();
+        };
+
+        var btnCancel = new Button { Text = "Batal", Location = new Point(182, 244), Width = 90, Height = 36 };
+        AppTheme.StyleButton(btnCancel, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
+
+        Controls.AddRange(new Control[]
+        {
+            lblClient, _txtClient,
+            lblCompany, _txtCompany,
+            lblNotes, _txtNotes,
+            _chkDate, _dtpOrder,
+            btnOk, btnCancel
+        });
+    }
 }

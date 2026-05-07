@@ -56,9 +56,7 @@ public class EstimationHistoryForm : Form
         AppTheme.StyleComboBox(cmbStatus);
         cmbStatus.Items.AddRange(new[] {
             "Semua",
-            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove",
-            "Won", "Lost",
-            "Draft", "Approved", "Sent"   // kompatibilitas data lama
+            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove"
         });
         cmbStatus.SelectedIndex = 0;
         cmbStatus.SelectedIndexChanged += (s, e) => FilterGrid();
@@ -82,7 +80,7 @@ public class EstimationHistoryForm : Form
         var pnlBottom = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = AppTheme.SidebarBg, Padding = new Padding(12) };
         pnlBottom.Paint += (s, e) => { using var pen = new Pen(AppTheme.Border); e.Graphics.DrawLine(pen, 0, 0, pnlBottom.Width, 0); };
 
-        var btnLoad = new Button { Text = "📂 Buka Estimasi", Location = new Point(12, 10), Width = 150, Height = 36 };
+        var btnLoad = new Button { Text = "✏ Edit Estimasi", Location = new Point(12, 10), Width = 150, Height = 36 };
         AppTheme.StyleButton(btnLoad, AppTheme.Primary, Color.White);
         btnLoad.Click += BtnLoad_Click;
 
@@ -152,10 +150,6 @@ public class EstimationHistoryForm : Form
                 "Selesai Dihitung" => Color.FromArgb(37,  99,  235),  // blue
                 "Menunggu Approve" => Color.FromArgb(217, 119,   6),  // amber
                 "Sudah Diapprove"  => Color.FromArgb(  5, 150, 105),  // emerald
-                "Won"              => AppTheme.Success,
-                "Lost"             => AppTheme.Danger,
-                "Approved"         => AppTheme.Primary,               // data lama
-                "Sent"             => AppTheme.Warning,               // data lama
                 _                  => AppTheme.TextSecondary
             };
         }
@@ -216,24 +210,15 @@ public class EstimationHistoryForm : Form
         if (fmt == DialogResult.Cancel) return;
         bool useLetter = fmt == DialogResult.Yes;
 
-        using var sfd = new SaveFileDialog
-        {
-            Title = "Simpan Penawaran PDF",
-            Filter = "PDF Files (*.pdf)|*.pdf",
-            FileName = useLetter
-                ? $"Surat_{est.EstimationNumber}.pdf"
-                : $"{est.EstimationNumber}.pdf",
-            DefaultExt = "pdf"
-        };
-        if (sfd.ShowDialog() != DialogResult.OK) return;
-
+        // ── Generate to temp file for preview ────────────────────────────
+        var tempPath = Path.Combine(Path.GetTempPath(),
+            $"Preview_{est.EstimationNumber}_{DateTime.Now:HHmmss}.pdf");
         try
         {
             var settings = _context != null
                 ? _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "")
                 : new Dictionary<string, string>();
 
-            // Use stored percent; fall back to deriving from amounts for old records
             var marginPct = est.MarginPercent != 0 ? est.MarginPercent
                 : (est.SubTotal > 0 ? Math.Round(est.Margin / est.SubTotal * 100, 1) : 0);
             var taxBase   = est.SubTotal + est.Margin + est.ShippingCost;
@@ -253,7 +238,7 @@ public class EstimationHistoryForm : Form
                     d.LineTotalPrice)).ToList();
 
                 PdfLetterExport.Generate(
-                    outputPath:       sfd.FileName,
+                    outputPath:       tempPath,
                     estimationNumber: est.EstimationNumber,
                     clientName:       est.ClientName,
                     contactPhone:     est.ContactPhone,
@@ -288,7 +273,7 @@ public class EstimationHistoryForm : Form
                     d.LineTotalPrice)).ToList();
 
                 PdfQuotationExport.Generate(
-                    outputPath:       sfd.FileName,
+                    outputPath:       tempPath,
                     estimationNumber: est.EstimationNumber,
                     clientName:       est.ClientName,
                     contactPhone:     est.ContactPhone,
@@ -309,15 +294,48 @@ public class EstimationHistoryForm : Form
                     settings:         settings);
             }
 
-            var open = MessageBox.Show("PDF berhasil dibuat. Buka sekarang?", "Export Berhasil",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-            if (open == DialogResult.Yes)
-                System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+            // ── Open preview automatically ────────────────────────────────
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(tempPath) { UseShellExecute = true });
+
+            // ── Ask user whether to save permanently ──────────────────────
+            var save = MessageBox.Show(
+                "PDF preview telah dibuka.\n\nSimpan ke file permanen?",
+                "Simpan PDF",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (save == DialogResult.Yes)
+            {
+                using var sfd = new SaveFileDialog
+                {
+                    Title      = "Simpan Penawaran PDF",
+                    Filter     = "PDF Files (*.pdf)|*.pdf",
+                    FileName   = useLetter
+                        ? $"Surat_{est.EstimationNumber}.pdf"
+                        : $"{est.EstimationNumber}.pdf",
+                    DefaultExt = "pdf"
+                };
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    File.Copy(tempPath, sfd.FileName, overwrite: true);
+                    MessageBox.Show($"PDF disimpan:\n{sfd.FileName}", "Tersimpan",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Gagal membuat PDF:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            // Temp file cleanup after a short delay (PDF viewer might still hold it open)
+            Task.Run(async () =>
+            {
+                await Task.Delay(30_000); // 30s — enough time for viewer to load
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            });
         }
     }
 
@@ -358,8 +376,7 @@ public class StatusChangeDialog : Form
         cmb = new ComboBox { Location = new Point(20, 44), Width = 240, DropDownStyle = ComboBoxStyle.DropDownList };
         AppTheme.StyleComboBox(cmb);
         cmb.Items.AddRange(new[] {
-            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove",
-            "Won", "Lost"
+            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove"
         });
         cmb.SelectedItem = currentStatus;
 
