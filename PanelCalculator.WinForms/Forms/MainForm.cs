@@ -1040,6 +1040,7 @@ public partial class MainForm : Form
         var name    = row.Cells["ColName"].Value?.ToString() ?? "";
         var price   = row.Cells["ColPrice"].Value is decimal p ? p : 0m;
         var prodId  = row.Cells["ColProductId"].Value is int id ? id : 0;
+        var vendor  = row.Cells["ColVendor"].Value?.ToString() ?? "";
 
         var targetSection = cmbTargetSection.SelectedItem?.ToString() ?? "Material Utama";
 
@@ -1057,6 +1058,7 @@ public partial class MainForm : Form
                 ReferenceCode = refCode,
                 ProductName   = name,
                 UnitPrice     = price,
+                Vendor        = vendor,
                 Quantity      = 1,
                 Adj1Percent   = 0m,
                 Adj2Percent   = 0m,
@@ -1300,11 +1302,25 @@ public partial class MainForm : Form
             return;
         }
 
+        // ── Format selection ──────────────────────────────────────────────
+        var fmt = MessageBox.Show(
+            "Pilih format export PDF:\n\n" +
+            "  [Yes]    Surat Resmi  — format surat penawaran formal (2 halaman)\n" +
+            "  [No]     Modern       — format digital tabel berwarna\n" +
+            "  [Cancel] Batal",
+            "Format Export PDF",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+        if (fmt == DialogResult.Cancel) return;
+        bool useLetter = fmt == DialogResult.Yes;
+
         using var sfd = new SaveFileDialog
         {
             Title      = "Simpan Penawaran PDF",
             Filter     = "PDF Files (*.pdf)|*.pdf",
-            FileName   = $"Penawaran_{DateTime.Now:yyyyMMdd_HHmm}.pdf",
+            FileName   = useLetter
+                ? $"SuratPenawaran_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
+                : $"Penawaran_{DateTime.Now:yyyyMMdd_HHmm}.pdf",
             DefaultExt = "pdf"
         };
         if (sfd.ShowDialog() != DialogResult.OK) return;
@@ -1314,32 +1330,68 @@ public partial class MainForm : Form
             var settings = _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "");
             var (subtotal, _, _, _, totalMarginAmt, ppnAmt, pphAmt, total) = CalcAll();
 
-            var lineItems = _currentItems
-                .Select(i => new PdfQuotationExport.LineItem(
-                    i.ReferenceCode, i.ProductName, i.Section, i.Quantity,
-                    i.Satuan, i.UnitPrice, i.Adj1Percent, i.LineTotal))
-                .ToList();
+            if (useLetter)
+            {
+                // ── Surat Resmi (formal letter) ───────────────────────────
+                var letterItems = _currentItems
+                    .Select(i => new PdfLetterExport.LineItem(
+                        i.ReferenceCode, i.ProductName, i.Vendor, i.Section,
+                        i.Quantity, i.Satuan, i.UnitPrice, i.LineTotal))
+                    .ToList();
 
-            PdfQuotationExport.Generate(
-                outputPath:       sfd.FileName,
-                estimationNumber: $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
-                clientName:       "—",
-                contactPhone:     null,
-                company:          null,
-                address:          null,
-                createdDate:      DateTime.Now,
-                notes:            "",
-                items:            lineItems,
-                subtotal:         subtotal,
-                marginPercent:    _margin1Percent,
-                marginAmount:     totalMarginAmt,
-                shippingCost:     _shippingCost,
-                taxPercent:       _taxPercent,
-                taxAmount:        ppnAmt,
-                pphPercent:       _pphPercent,
-                pphAmount:        pphAmt,
-                total:            total,
-                settings:         settings);
+                PdfLetterExport.Generate(
+                    outputPath:       sfd.FileName,
+                    estimationNumber: $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
+                    clientName:       !string.IsNullOrWhiteSpace(txtClientName.Text) ? txtClientName.Text.Trim() : "—",
+                    contactPhone:     !string.IsNullOrWhiteSpace(txtContactPhone.Text) ? txtContactPhone.Text.Trim() : null,
+                    company:          !string.IsNullOrWhiteSpace(txtCompany.Text)      ? txtCompany.Text.Trim()      : null,
+                    address:          !string.IsNullOrWhiteSpace(txtAddress.Text)      ? txtAddress.Text.Trim()      : null,
+                    createdDate:      dtpCreatedDate.Value,
+                    notes:            txtNotes.Text.Trim(),
+                    items:            letterItems,
+                    subtotal:         subtotal,
+                    margin1Percent:   _margin1Percent,
+                    margin2Percent:   _margin2Percent,
+                    margin3Percent:   _margin3Percent,
+                    marginAmount:     totalMarginAmt,
+                    shippingCost:     _shippingCost,
+                    taxPercent:       _taxPercent,
+                    taxAmount:        ppnAmt,
+                    pphPercent:       _pphPercent,
+                    pphAmount:        pphAmt,
+                    total:            total,
+                    settings:         settings);
+            }
+            else
+            {
+                // ── Format Modern (existing colorful table) ───────────────
+                var lineItems = _currentItems
+                    .Select(i => new PdfQuotationExport.LineItem(
+                        i.ReferenceCode, i.ProductName, i.Section, i.Quantity,
+                        i.Satuan, i.UnitPrice, i.Adj1Percent, i.LineTotal))
+                    .ToList();
+
+                PdfQuotationExport.Generate(
+                    outputPath:       sfd.FileName,
+                    estimationNumber: $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
+                    clientName:       !string.IsNullOrWhiteSpace(txtClientName.Text) ? txtClientName.Text.Trim() : "—",
+                    contactPhone:     !string.IsNullOrWhiteSpace(txtContactPhone.Text) ? txtContactPhone.Text.Trim() : null,
+                    company:          !string.IsNullOrWhiteSpace(txtCompany.Text)      ? txtCompany.Text.Trim()      : null,
+                    address:          !string.IsNullOrWhiteSpace(txtAddress.Text)      ? txtAddress.Text.Trim()      : null,
+                    createdDate:      dtpCreatedDate.Value,
+                    notes:            txtNotes.Text.Trim(),
+                    items:            lineItems,
+                    subtotal:         subtotal,
+                    marginPercent:    _margin1Percent,
+                    marginAmount:     totalMarginAmt,
+                    shippingCost:     _shippingCost,
+                    taxPercent:       _taxPercent,
+                    taxAmount:        ppnAmt,
+                    pphPercent:       _pphPercent,
+                    pphAmount:        pphAmt,
+                    total:            total,
+                    settings:         settings);
+            }
 
             SetStatus($"✓ PDF disimpan: {sfd.FileName}");
 
@@ -1494,6 +1546,7 @@ public partial class MainForm : Form
                 ReferenceCode = d.Product?.ReferenceCode ?? "",
                 ProductName   = d.Product?.ProductName ?? "",
                 UnitPrice     = d.UnitPrice,
+                Vendor        = d.Product?.Vendor ?? "",
                 Quantity      = d.Quantity,
                 Satuan        = string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
                 Adj1Percent   = d.AdjPercent,
@@ -1593,6 +1646,9 @@ public class EstimationLineItem
 
     /// <summary>Per-item adjustment tier 3</summary>
     public decimal Adj3Percent { get; set; } = 0m;
+
+    /// <summary>Vendor / merek produk, e.g. "Schneider". Populated from Product.Vendor.</summary>
+    public string Vendor { get; set; } = "";
 
     /// <summary>Material Utama | Material Pendukung | Material Lainnya</summary>
     public string Section { get; set; } = "Material Utama";

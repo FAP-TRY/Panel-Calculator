@@ -109,6 +109,12 @@ static class Program
                 CreatedDate  TEXT NOT NULL DEFAULT (datetime('now')),
                 LastLoginDate TEXT NULL
             )");
+
+            // Default settings for formal letter export (INSERT OR IGNORE = no-op if already set)
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerName',    '',                datetime('now'))");
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerTitle',   'Marketing',       datetime('now'))");
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('OfferLocation','',                datetime('now'))");
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('CompanyName',  'PT. Tritunggal Swarna', datetime('now'))");
         }
         catch { /* non-fatal */ }
     }

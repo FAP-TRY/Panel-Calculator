@@ -204,11 +204,25 @@ public class EstimationHistoryForm : Form
         var est = _allEstimations.FirstOrDefault(x => x.EstimationId == id);
         if (est == null) return;
 
+        // ── Format selection ──────────────────────────────────────────────
+        var fmt = MessageBox.Show(
+            "Pilih format export PDF:\n\n" +
+            "  [Yes]    Surat Resmi  — format surat penawaran formal (2 halaman)\n" +
+            "  [No]     Modern       — format digital tabel berwarna\n" +
+            "  [Cancel] Batal",
+            "Format Export PDF",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+        if (fmt == DialogResult.Cancel) return;
+        bool useLetter = fmt == DialogResult.Yes;
+
         using var sfd = new SaveFileDialog
         {
             Title = "Simpan Penawaran PDF",
             Filter = "PDF Files (*.pdf)|*.pdf",
-            FileName = $"{est.EstimationNumber}.pdf",
+            FileName = useLetter
+                ? $"Surat_{est.EstimationNumber}.pdf"
+                : $"{est.EstimationNumber}.pdf",
             DefaultExt = "pdf"
         };
         if (sfd.ShowDialog() != DialogResult.OK) return;
@@ -219,16 +233,6 @@ public class EstimationHistoryForm : Form
                 ? _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "")
                 : new Dictionary<string, string>();
 
-            var lineItems = est.Details.Select(d => new PdfQuotationExport.LineItem(
-                d.Product?.ReferenceCode ?? "—",
-                d.Product?.ProductName ?? "—",
-                string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
-                d.Quantity,
-                string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
-                d.UnitPrice,
-                d.AdjPercent,
-                d.LineTotalPrice)).ToList();
-
             // Use stored percent; fall back to deriving from amounts for old records
             var marginPct = est.MarginPercent != 0 ? est.MarginPercent
                 : (est.SubTotal > 0 ? Math.Round(est.Margin / est.SubTotal * 100, 1) : 0);
@@ -236,26 +240,74 @@ public class EstimationHistoryForm : Form
             var taxPct    = taxBase > 0 ? Math.Round(est.Tax / taxBase * 100, 1) : 0;
             var pphPct    = est.PPhPercent;
 
-            PdfQuotationExport.Generate(
-                outputPath:       sfd.FileName,
-                estimationNumber: est.EstimationNumber,
-                clientName:       est.ClientName,
-                contactPhone:     est.ContactPhone,
-                company:          est.Company,
-                address:          est.Address,
-                createdDate:      est.CreatedDate,
-                notes:            est.Notes ?? "",
-                items:            lineItems,
-                subtotal:         est.SubTotal,
-                marginPercent:    marginPct,
-                marginAmount:     est.Margin,
-                shippingCost:     est.ShippingCost,
-                taxPercent:       taxPct,
-                taxAmount:        est.Tax,
-                pphPercent:       pphPct,
-                pphAmount:        est.PPh,
-                total:            est.TotalPrice,
-                settings:         settings);
+            if (useLetter)
+            {
+                var letterItems = est.Details.Select(d => new PdfLetterExport.LineItem(
+                    d.Product?.ReferenceCode ?? "—",
+                    d.Product?.ProductName ?? "—",
+                    d.Product?.Vendor ?? "",
+                    string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                    d.Quantity,
+                    string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                    d.UnitPrice,
+                    d.LineTotalPrice)).ToList();
+
+                PdfLetterExport.Generate(
+                    outputPath:       sfd.FileName,
+                    estimationNumber: est.EstimationNumber,
+                    clientName:       est.ClientName,
+                    contactPhone:     est.ContactPhone,
+                    company:          est.Company,
+                    address:          est.Address,
+                    createdDate:      est.CreatedDate,
+                    notes:            est.Notes ?? "",
+                    items:            letterItems,
+                    subtotal:         est.SubTotal,
+                    margin1Percent:   marginPct,
+                    margin2Percent:   est.Margin2Percent,
+                    margin3Percent:   est.Margin3Percent,
+                    marginAmount:     est.Margin,
+                    shippingCost:     est.ShippingCost,
+                    taxPercent:       taxPct,
+                    taxAmount:        est.Tax,
+                    pphPercent:       pphPct,
+                    pphAmount:        est.PPh,
+                    total:            est.TotalPrice,
+                    settings:         settings);
+            }
+            else
+            {
+                var lineItems = est.Details.Select(d => new PdfQuotationExport.LineItem(
+                    d.Product?.ReferenceCode ?? "—",
+                    d.Product?.ProductName ?? "—",
+                    string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                    d.Quantity,
+                    string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                    d.UnitPrice,
+                    d.AdjPercent,
+                    d.LineTotalPrice)).ToList();
+
+                PdfQuotationExport.Generate(
+                    outputPath:       sfd.FileName,
+                    estimationNumber: est.EstimationNumber,
+                    clientName:       est.ClientName,
+                    contactPhone:     est.ContactPhone,
+                    company:          est.Company,
+                    address:          est.Address,
+                    createdDate:      est.CreatedDate,
+                    notes:            est.Notes ?? "",
+                    items:            lineItems,
+                    subtotal:         est.SubTotal,
+                    marginPercent:    marginPct,
+                    marginAmount:     est.Margin,
+                    shippingCost:     est.ShippingCost,
+                    taxPercent:       taxPct,
+                    taxAmount:        est.Tax,
+                    pphPercent:       pphPct,
+                    pphAmount:        est.PPh,
+                    total:            est.TotalPrice,
+                    settings:         settings);
+            }
 
             var open = MessageBox.Show("PDF berhasil dibuat. Buka sekarang?", "Export Berhasil",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Information);
