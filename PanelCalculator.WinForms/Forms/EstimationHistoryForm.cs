@@ -192,21 +192,9 @@ public class EstimationHistoryForm : Form
         var est = _allEstimations.FirstOrDefault(x => x.EstimationId == id);
         if (est == null) return;
 
-        // ── Format selection ──────────────────────────────────────────────
-        var fmt = MessageBox.Show(
-            "Pilih format export PDF:\n\n" +
-            "  [Yes]    Surat Resmi  — format surat penawaran formal (2 halaman)\n" +
-            "  [No]     Modern       — format digital tabel berwarna\n" +
-            "  [Cancel] Batal",
-            "Format Export PDF",
-            MessageBoxButtons.YesNoCancel,
-            MessageBoxIcon.Question);
-        if (fmt == DialogResult.Cancel) return;
-        bool useLetter = fmt == DialogResult.Yes;
-
-        // ── Generate to temp file for preview ────────────────────────────
+        // Always export as Surat Resmi (formal letter with company letterhead)
         var tempPath = Path.Combine(Path.GetTempPath(),
-            $"Preview_{est.EstimationNumber}_{DateTime.Now:HHmmss}.pdf");
+            $"Surat_{est.EstimationNumber}_{DateTime.Now:HHmmss}.pdf");
         try
         {
             var settings = _context != null
@@ -219,82 +207,46 @@ public class EstimationHistoryForm : Form
             var taxPct    = taxBase > 0 ? Math.Round(est.Tax / taxBase * 100, 1) : 0;
             var pphPct    = est.PPhPercent;
 
-            if (useLetter)
-            {
-                var letterItems = est.Details.Select(d => new PdfLetterExport.LineItem(
-                    d.Product?.ReferenceCode ?? "—",
-                    d.Product?.ProductName ?? "—",
-                    d.Product?.Vendor ?? "",
-                    string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
-                    d.Quantity,
-                    string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
-                    d.UnitPrice,
-                    d.LineTotalPrice)).ToList();
+            var letterItems = est.Details.Select(d => new PdfLetterExport.LineItem(
+                d.Product?.ReferenceCode ?? "—",
+                d.Product?.ProductName ?? "—",
+                d.Product?.Vendor ?? "",
+                string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                d.Quantity,
+                string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                d.UnitPrice,
+                d.LineTotalPrice)).ToList();
 
-                PdfLetterExport.Generate(
-                    outputPath:       tempPath,
-                    estimationNumber: est.EstimationNumber,
-                    clientName:       est.ClientName,
-                    contactPhone:     est.ContactPhone,
-                    company:          est.Company,
-                    address:          est.Address,
-                    createdDate:      est.CreatedDate,
-                    notes:            est.Notes ?? "",
-                    items:            letterItems,
-                    subtotal:         est.SubTotal,
-                    margin1Percent:   marginPct,
-                    margin2Percent:   est.Margin2Percent,
-                    margin3Percent:   est.Margin3Percent,
-                    marginAmount:     est.Margin,
-                    shippingCost:     est.ShippingCost,
-                    taxPercent:       taxPct,
-                    taxAmount:        est.Tax,
-                    pphPercent:       pphPct,
-                    pphAmount:        est.PPh,
-                    total:            est.TotalPrice,
-                    settings:         settings);
-            }
-            else
-            {
-                var lineItems = est.Details.Select(d => new PdfQuotationExport.LineItem(
-                    d.Product?.ReferenceCode ?? "—",
-                    d.Product?.ProductName ?? "—",
-                    string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
-                    d.Quantity,
-                    string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
-                    d.UnitPrice,
-                    d.AdjPercent,
-                    d.LineTotalPrice)).ToList();
+            PdfLetterExport.Generate(
+                outputPath:       tempPath,
+                estimationNumber: est.EstimationNumber,
+                clientName:       est.ClientName,
+                contactPhone:     est.ContactPhone,
+                company:          est.Company,
+                address:          est.Address,
+                createdDate:      est.CreatedDate,
+                notes:            est.Notes ?? "",
+                items:            letterItems,
+                subtotal:         est.SubTotal,
+                margin1Percent:   marginPct,
+                margin2Percent:   est.Margin2Percent,
+                margin3Percent:   est.Margin3Percent,
+                marginAmount:     est.Margin,
+                shippingCost:     est.ShippingCost,
+                taxPercent:       taxPct,
+                taxAmount:        est.Tax,
+                pphPercent:       pphPct,
+                pphAmount:        est.PPh,
+                total:            est.TotalPrice,
+                settings:         settings);
 
-                PdfQuotationExport.Generate(
-                    outputPath:       tempPath,
-                    estimationNumber: est.EstimationNumber,
-                    clientName:       est.ClientName,
-                    contactPhone:     est.ContactPhone,
-                    company:          est.Company,
-                    address:          est.Address,
-                    createdDate:      est.CreatedDate,
-                    notes:            est.Notes ?? "",
-                    items:            lineItems,
-                    subtotal:         est.SubTotal,
-                    marginPercent:    marginPct,
-                    marginAmount:     est.Margin,
-                    shippingCost:     est.ShippingCost,
-                    taxPercent:       taxPct,
-                    taxAmount:        est.Tax,
-                    pphPercent:       pphPct,
-                    pphAmount:        est.PPh,
-                    total:            est.TotalPrice,
-                    settings:         settings);
-            }
-
-            // ── Open preview automatically ────────────────────────────────
+            // Open preview in default PDF viewer
             System.Diagnostics.Process.Start(
                 new System.Diagnostics.ProcessStartInfo(tempPath) { UseShellExecute = true });
 
-            // ── Ask user whether to save permanently ──────────────────────
+            // Offer to save permanently
             var save = MessageBox.Show(
-                "PDF preview telah dibuka.\n\nSimpan ke file permanen?",
+                "Surat Penawaran telah dibuka sebagai preview.\n\nSimpan ke file permanen?",
                 "Simpan PDF",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
@@ -303,11 +255,9 @@ public class EstimationHistoryForm : Form
             {
                 using var sfd = new SaveFileDialog
                 {
-                    Title      = "Simpan Penawaran PDF",
+                    Title      = "Simpan Surat Penawaran PDF",
                     Filter     = "PDF Files (*.pdf)|*.pdf",
-                    FileName   = useLetter
-                        ? $"Surat_{est.EstimationNumber}.pdf"
-                        : $"{est.EstimationNumber}.pdf",
+                    FileName   = $"SuratPenawaran_{est.EstimationNumber}.pdf",
                     DefaultExt = "pdf"
                 };
                 if (sfd.ShowDialog() == DialogResult.OK)
@@ -320,14 +270,14 @@ public class EstimationHistoryForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Gagal membuat PDF:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show($"Gagal membuat PDF:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
-            // Temp file cleanup after a short delay (PDF viewer might still hold it open)
             Task.Run(async () =>
             {
-                await Task.Delay(30_000); // 30s — enough time for viewer to load
+                await Task.Delay(30_000);
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             });
         }

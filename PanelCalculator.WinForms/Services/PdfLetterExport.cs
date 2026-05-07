@@ -1,7 +1,11 @@
 using iText.IO.Font.Constants;
+using iText.IO.Image;
 using iText.Kernel.Colors;
+using iText.Kernel.Events;
 using iText.Kernel.Font;
+using iText.Kernel.Geom;
 using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas;
 using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
@@ -11,14 +15,14 @@ using System.Globalization;
 namespace PanelCalculator.WinForms.Services;
 
 /// <summary>
-/// Generates a formal Indonesian business letter (Surat Penawaran Harga).
-/// Page 1: Cover letter with Nomor/Perihal/Lampiran block, price summary table,
-///         Kondisi Penawaran, and signature block.
-/// Page 2: Rincian Material — per-section detail tables (No, Material, Merek, Tipe, Satuan, Jumlah).
+/// Generates a formal Surat Penawaran Harga.
+/// If "letterhead.png" (or .jpg) exists next to the EXE it is drawn as a full-page
+/// background on every page (START_PAGE event), so the PDF looks like it was printed on
+/// the company's official letterhead paper.
 /// </summary>
 public static class PdfLetterExport
 {
-    // ── Color palette (professional, conservative) ────────────────────────
+    // ── Palette (content only – light / professional) ─────────────────────
     private static readonly DeviceRgb ColorDark     = new(25,  25,  25);
     private static readonly DeviceRgb ColorMuted    = new(100, 100, 100);
     private static readonly DeviceRgb ColorTableHdr = new(210, 225, 245);
@@ -29,7 +33,7 @@ public static class PdfLetterExport
 
     private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
 
-    // ── Public record ─────────────────────────────────────────────────────
+    // ── Public line-item record ───────────────────────────────────────────
     public record LineItem(
         string  ReferenceCode,
         string  ProductName,
@@ -66,35 +70,90 @@ public static class PdfLetterExport
     {
         using var writer = new PdfWriter(outputPath);
         using var pdf    = new PdfDocument(writer);
-        using var doc    = new Document(pdf);
-        doc.SetMargins(50, 60, 50, 60);
 
         var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
         var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
 
-        // ── Settings ──────────────────────────────────────────────────────
-        var companyName   = Get(settings, "CompanyName",    "PT. Tritunggal Swarna");
-        var companyAddr   = Get(settings, "CompanyAddress", "Bandung, Indonesia");
-        var companyPhone  = Get(settings, "CompanyPhone",   "");
-        var signerName    = Get(settings, "SignerName",     "");
-        var signerTitle   = Get(settings, "SignerTitle",    "Marketing");
-        var offerLocation = Get(settings, "OfferLocation",  "");
+        // ── Settings ─────────────────────────────────────────────────────
+        var signerName    = Get(settings, "SignerName",    "");
+        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var offerLocation = Get(settings, "OfferLocation", "Bandung");
 
-        // ── PAGE 1 ────────────────────────────────────────────────────────
+        // ── Letterhead background image ───────────────────────────────────
+        // Look for letterhead.png / letterhead.jpg next to the EXE (or path in settings)
+        var bgPath = FindLetterheadImage(settings);
+        if (bgPath != null)
+            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
+                new BackgroundImageHandler(bgPath));
+
+        // Margins sized to match the letterhead body area:
+        //   top  ~90 pt  = below the company logo + separator line
+        //   bot  ~72 pt  = above address lines + footer bar
+        using var doc = new Document(pdf, PageSize.A4);
+        doc.SetMargins(90f, 60f, 72f, 60f);
+
+        // ── Page 1 ────────────────────────────────────────────────────────
         Page1(doc, reg, bold,
             estimationNumber, clientName, contactPhone, company, address,
             createdDate, notes, items,
             subtotal, marginAmount, shippingCost, taxPercent, taxAmount, pphAmount, total,
-            companyName, companyAddr, companyPhone, signerName, signerTitle, offerLocation);
+            signerName, signerTitle, offerLocation);
 
-        // ── PAGE 2 ────────────────────────────────────────────────────────
+        // ── Page 2 ────────────────────────────────────────────────────────
         doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-        Page2(doc, reg, bold, items, estimationNumber, companyName);
+        Page2(doc, reg, bold, items, estimationNumber);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ── Find the letterhead image file ────────────────────────────────────
+    private static string? FindLetterheadImage(IDictionary<string, string> settings)
+    {
+        // 1. Explicit path in Settings
+        if (settings.TryGetValue("LetterheadImagePath", out var sp) &&
+            !string.IsNullOrWhiteSpace(sp) && File.Exists(sp))
+            return sp;
+
+        // 2. Next to the EXE: letterhead.png / letterhead.jpg
+        var dir = AppDomain.CurrentDomain.BaseDirectory;
+        foreach (var name in new[] { "letterhead.png", "letterhead.jpg", "kopsurat.png", "kopsurat.jpg" })
+        {
+            var path = System.IO.Path.Combine(dir, name);
+            if (File.Exists(path)) return path;
+        }
+        return null;   // no letterhead image found — no background drawn
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  BACKGROUND IMAGE HANDLER  —  draws letterhead on every page
+    // ══════════════════════════════════════════════════════════════════════
+    private sealed class BackgroundImageHandler : IEventHandler
+    {
+        private readonly string   _imagePath;
+        private ImageData?        _imageData;
+
+        public BackgroundImageHandler(string imagePath) { _imagePath = imagePath; }
+
+        public void HandleEvent(Event evt)
+        {
+            if (evt is not PdfDocumentEvent docEvt) return;
+            var page = docEvt.GetPage();
+            var sz   = page.GetPageSize();
+            float w  = sz.GetWidth();
+            float h  = sz.GetHeight();
+
+            // Lazy-load once, reuse for all pages
+            _imageData ??= ImageDataFactory.Create(_imagePath);
+
+            // Draw image stretched to fill the entire page (background layer)
+            var cv = new PdfCanvas(page);
+            // Transformation matrix: [width, 0, 0, height, x0, y0]
+            cv.AddImageWithTransformationMatrix(_imageData, w, 0f, 0f, h, 0f, 0f, false);
+            cv.Release();
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
     //  PAGE 1  –  Surat Penawaran Harga
-    // ─────────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     private static void Page1(
         Document doc, PdfFont reg, PdfFont bold,
         string estNo,
@@ -103,21 +162,10 @@ public static class PdfLetterExport
         IReadOnlyList<LineItem> items,
         decimal subtotal, decimal marginAmount, decimal shippingCost,
         decimal taxPct, decimal taxAmt, decimal pphAmt, decimal total,
-        string companyName, string companyAddr, string companyPhone,
         string signerName, string signerTitle, string offerLocation)
     {
-        // ── Company header ────────────────────────────────────────────────
-        doc.Add(P(companyName, bold, 14, ColorDark).SetMarginBottom(1));
-        doc.Add(P(companyAddr, reg,  9,  ColorMuted)
-            .SetMarginBottom(string.IsNullOrWhiteSpace(companyPhone) ? 0 : 0));
-        if (!string.IsNullOrWhiteSpace(companyPhone))
-            doc.Add(P($"Telp: {companyPhone}", reg, 9, ColorMuted).SetMarginBottom(0));
-
-        doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
-            .SetStrokeColor(ColorDark).SetMarginTop(4).SetMarginBottom(10));
-
         // ── Date (right-aligned) ──────────────────────────────────────────
-        var city    = CityOf(offerLocation.Length > 0 ? offerLocation : companyAddr);
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
         var dateStr = date.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
         doc.Add(P($"{city}, {dateStr}", reg, 10, ColorDark)
             .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(14));
@@ -156,8 +204,7 @@ public static class PdfLetterExport
             .ToList();
 
         float[] pw = { 8, 62, 30 };
-        var ptbl = new Table(UnitValue.CreatePercentArray(pw))
-            .UseAllAvailableWidth().SetMarginBottom(4);
+        var ptbl = new Table(UnitValue.CreatePercentArray(pw)).UseAllAvailableWidth().SetMarginBottom(4);
         TblHdr(ptbl, bold,
             new[] { "No.", "Nama Barang", "Harga" },
             new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
@@ -167,9 +214,9 @@ public static class PdfLetterExport
         {
             no++;
             var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
-            ptbl.AddCell(DC(no.ToString(),    reg, 9, bg, TextAlignment.CENTER));
-            ptbl.AddCell(DC(name,             reg, 9, bg, TextAlignment.LEFT));
-            ptbl.AddCell(DC(Rp(st) + ",-",   reg, 9, bg, TextAlignment.RIGHT));
+            ptbl.AddCell(DC(no.ToString(),  reg, 9, bg, TextAlignment.CENTER));
+            ptbl.AddCell(DC(name,           reg, 9, bg, TextAlignment.LEFT));
+            ptbl.AddCell(DC(Rp(st) + ",-", reg, 9, bg, TextAlignment.RIGHT));
         }
 
         // Total row
@@ -184,7 +231,6 @@ public static class PdfLetterExport
             .Add(P(Rp(subtotal) + ",-", bold, 9, ColorDark)));
         doc.Add(ptbl);
 
-        // Small footnote under table if PPN note applies
         if (taxPct > 0)
             doc.Add(P($"*) Harga belum termasuk PPN {taxPct:F0}%",
                 reg, 8, ColorMuted).SetMarginBottom(10).SetMarginLeft(2));
@@ -193,15 +239,10 @@ public static class PdfLetterExport
 
         // ── Kondisi Penawaran ─────────────────────────────────────────────
         doc.Add(P("Kondisi Penawaran:", bold, 10, ColorDark).SetMarginBottom(4));
-        var locoStr = !string.IsNullOrWhiteSpace(offerLocation)
-            ? offerLocation
-            : CityOf(companyAddr);
         var conds = new[]
         {
-            taxPct > 0
-                ? $"Harga belum termasuk PPN {taxPct:F0}%"
-                : "Harga sudah termasuk PPN",
-            $"Loco {locoStr}",
+            taxPct > 0 ? $"Harga belum termasuk PPN {taxPct:F0}%" : "Harga sudah termasuk PPN",
+            $"Loco {city}",
             "Uang muka 30% dari total harga",
             "Harga dapat berubah sewaktu-waktu tanpa pemberitahuan terlebih dahulu"
         };
@@ -225,29 +266,27 @@ public static class PdfLetterExport
         var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
             .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
         var sigCell = new Cell().SetBorder(Border.NO_BORDER)
-            .Add(P("Hormat kami,",  reg,  10, ColorDark).SetMarginBottom(2))
-            .Add(P(companyName,     bold, 10, ColorDark).SetMarginBottom(50)); // space for wet signature
+            .Add(P("Hormat kami,",          reg,  10, ColorDark).SetMarginBottom(2))
+            .Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark).SetMarginBottom(50));
         if (!string.IsNullOrWhiteSpace(signerName))
             sigCell.Add(P(signerName,  bold, 10, ColorDark).SetMarginBottom(0));
         if (!string.IsNullOrWhiteSpace(signerTitle))
             sigCell.Add(P(signerTitle, reg,   9, ColorMuted));
         sigTbl.AddCell(sigCell);
-        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));   // right column intentionally empty
+        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
         doc.Add(sigTbl);
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     //  PAGE 2  –  Rincian Material
-    // ─────────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     private static void Page2(
         Document doc, PdfFont reg, PdfFont bold,
-        IReadOnlyList<LineItem> items,
-        string estNo, string companyName)
+        IReadOnlyList<LineItem> items, string estNo)
     {
-        // Page heading
         doc.Add(P("RINCIAN MATERIAL", bold, 14, ColorDark)
             .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(2));
-        doc.Add(P($"Ref: {estNo}  |  {companyName}", reg, 9, ColorMuted)
+        doc.Add(P($"Ref: {estNo}", reg, 9, ColorMuted)
             .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(10));
         doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
             .SetStrokeColor(ColorDark).SetMarginBottom(14));
@@ -261,10 +300,8 @@ public static class PdfLetterExport
             if (secItems.Count == 0) continue;
             panelNo++;
 
-            // Section title
             doc.Add(P($"{panelNo}. {sec}", bold, 11, ColorDark).SetMarginBottom(6));
 
-            // Material table
             float[] cw = { 6, 37, 16, 23, 9, 9 };
             var tbl = new Table(UnitValue.CreatePercentArray(cw))
                 .UseAllAvailableWidth().SetMarginBottom(18);
@@ -278,20 +315,20 @@ public static class PdfLetterExport
             {
                 itemNo++;
                 var bg = itemNo % 2 == 0 ? ColorTableAlt : ColorWhite;
-                tbl.AddCell(DC(itemNo.ToString(),  reg, 9, bg, TextAlignment.CENTER));
-                tbl.AddCell(DC(item.ProductName,   reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.Vendor,        reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.ReferenceCode, reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.Satuan,        reg, 9, bg, TextAlignment.CENTER));
+                tbl.AddCell(DC(itemNo.ToString(),        reg, 9, bg, TextAlignment.CENTER));
+                tbl.AddCell(DC(item.ProductName,         reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DC(item.Vendor,              reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DC(item.ReferenceCode,       reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DC(item.Satuan,              reg, 9, bg, TextAlignment.CENTER));
                 tbl.AddCell(DC(item.Quantity.ToString(), reg, 9, bg, TextAlignment.CENTER));
             }
             doc.Add(tbl);
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     //  HELPERS
-    // ─────────────────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
     private static Paragraph P(string text, PdfFont font, float size, DeviceRgb color)
         => new Paragraph(text).SetFont(font).SetFontSize(size).SetFontColor(color)
             .SetMultipliedLeading(1.2f);
@@ -333,10 +370,4 @@ public static class PdfLetterExport
 
     private static string Rp(decimal value)
         => "Rp " + value.ToString("N0", IdCulture);
-
-    private static string CityOf(string addr)
-    {
-        if (string.IsNullOrWhiteSpace(addr)) return "Bandung";
-        return addr.Split(',')[0].Trim();
-    }
 }

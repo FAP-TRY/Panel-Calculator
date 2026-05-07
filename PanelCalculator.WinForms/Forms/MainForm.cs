@@ -140,7 +140,7 @@ public partial class MainForm : Form
             Margin        = new Padding(0)
         };
 
-        btnDashboard = MakeToolbarButton("📊 Dashboard",     AppTheme.Bg2,      120);
+        btnDashboard = MakeToolbarButton("🏠 Dashboard",     AppTheme.Bg2,      120);
         btnNew      = MakeToolbarButton("＋ Estimasi Baru", AppTheme.Brand500, 140);
         btnHistory  = MakeToolbarButton("📋 Riwayat",       AppTheme.Bg2,      110);
         btnReports  = MakeToolbarButton("📊 Laporan",       AppTheme.Bg2,      110);
@@ -1454,7 +1454,7 @@ public partial class MainForm : Form
             hRow.Cells["ColItemTotal"].Value = sectionItems.Count > 0 ? FormatRupiah(secTotal) : "";
 
             hRow.DefaultCellStyle.BackColor = hdrBg;
-            hRow.DefaultCellStyle.ForeColor = Color.FromArgb(30, 58, 138);
+            hRow.DefaultCellStyle.ForeColor = SectionHeaderForeColor(section);
             hRow.DefaultCellStyle.Font      = AppTheme.FontBold;
             hRow.ReadOnly = true;
             hRow.Tag      = -1; // sentinel: not an item row
@@ -1467,7 +1467,7 @@ public partial class MainForm : Form
                 var pRow = dgvItems.Rows[pIdx];
                 pRow.ReadOnly = true;
                 pRow.DefaultCellStyle.BackColor = rowBg;
-                pRow.DefaultCellStyle.ForeColor = AppTheme.TextMuted;
+                pRow.DefaultCellStyle.ForeColor = AppTheme.Text3;
                 pRow.DefaultCellStyle.Font      = new Font("Segoe UI", 8f, FontStyle.Italic);
                 pRow.Tag = -1;
                 continue;
@@ -1491,6 +1491,7 @@ public partial class MainForm : Form
                 var iRow = dgvItems.Rows[rIdx];
                 iRow.Tag = itemIdx; // store _currentItems index for event handlers
                 iRow.DefaultCellStyle.BackColor = rowBg;
+                iRow.DefaultCellStyle.ForeColor = AppTheme.Text1;
             }
         }
 
@@ -1602,21 +1603,29 @@ public partial class MainForm : Form
         SetStatus($"Loaded: {est.EstimationNumber} — {est.ClientName}");
     }
 
-    // ── Section color helpers ─────────────────────────────────────────────
+    // ── Section color helpers (dark-pro palette) ─────────────────────────
     private static Color SectionHeaderColor(string section) => section switch
     {
-        "Material Utama"      => Color.FromArgb(219, 234, 254), // blue-100
-        "Material Pendukung"  => Color.FromArgb(254, 249, 195), // yellow-100
-        "Material Lainnya"    => Color.FromArgb(220, 252, 231), // green-100
-        _                     => Color.FromArgb(241, 245, 249)
+        "Material Utama"     => Color.FromArgb(15,  22, 55),   // dark navy-blue tint
+        "Material Pendukung" => Color.FromArgb(32,  22,  8),   // dark amber tint
+        "Material Lainnya"   => Color.FromArgb( 8,  28, 16),   // dark green tint
+        _                    => AppTheme.Bg2
     };
 
     private static Color SectionRowColor(string section) => section switch
     {
-        "Material Utama"      => Color.White,
-        "Material Pendukung"  => Color.FromArgb(255, 253, 240), // very light yellow
-        "Material Lainnya"    => Color.FromArgb(243, 255, 245), // very light green
-        _                     => Color.White
+        "Material Utama"     => AppTheme.Bg1,                  // (11, 16, 32)
+        "Material Pendukung" => Color.FromArgb(14, 12,  6),    // very dark amber
+        "Material Lainnya"   => Color.FromArgb( 7, 13, 10),    // very dark green
+        _                    => AppTheme.Bg1
+    };
+
+    private static Color SectionHeaderForeColor(string section) => section switch
+    {
+        "Material Utama"     => Color.FromArgb(125, 210, 255), // light sky-blue
+        "Material Pendukung" => Color.FromArgb(251, 191,  36), // amber-300
+        "Material Lainnya"   => Color.FromArgb( 52, 211, 153), // emerald-300
+        _                    => AppTheme.Text2
     };
 
     private void SetStatus(string msg) => lblStatus.Text = msg;

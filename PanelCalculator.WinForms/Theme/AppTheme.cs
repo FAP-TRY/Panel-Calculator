@@ -1,3 +1,5 @@
+using PanelCalculator.WinForms.Controls;
+
 namespace PanelCalculator.WinForms.Theme;
 
 /// <summary>
@@ -181,10 +183,97 @@ public static class AppTheme
 
     public static void StyleTextBox(TextBox tb)
     {
-        tb.BorderStyle = BorderStyle.FixedSingle;
+        tb.BorderStyle = BorderStyle.None;   // RoundedPanel wrapper owns the border
         tb.Font        = FontBase;
         tb.BackColor   = Bg2;
         tb.ForeColor   = Text1;
+
+        // Wrap in a rounded-corner panel the first time this TextBox gets a parent
+        tb.ParentChanged += TextBoxParentChanged;
+    }
+
+    // ── rounded-wrapper helpers ───────────────────────────────────────────
+
+    private static void TextBoxParentChanged(object? sender, EventArgs e)
+    {
+        if (sender is not TextBox tb) return;
+        var parent = tb.Parent;
+        if (parent == null || parent is RoundedPanel) return; // already wrapped or detached
+
+        tb.ParentChanged -= TextBoxParentChanged;   // fire once only
+        WrapInRoundedPanel(tb);
+    }
+
+    private static void WrapInRoundedPanel(TextBox tb)
+    {
+        var parent     = tb.Parent!;
+        int origIndex  = parent.Controls.GetChildIndex(tb);
+        var origLoc    = tb.Location;
+        var origSize   = tb.Size;
+        var origAnchor = tb.Anchor;
+        var origDock   = tb.Dock;
+        bool isDocked  = origDock != DockStyle.None;
+
+        // Create the visual wrapper
+        var wrapper = new RoundedPanel
+        {
+            CornerRadius  = 6,
+            FillColor     = Bg2,
+            BorderNormal  = BorderStrong,
+            BorderFocused = Brand400,
+            Padding       = Padding.Empty,
+        };
+
+        if (isDocked)
+        {
+            // For DockStyle.Top / Fill etc — keep the dock, add a few pixels of height
+            wrapper.Dock   = origDock;
+            wrapper.Height = tb.PreferredHeight + 8;
+        }
+        else
+        {
+            // Absolute-positioned — same location / size / anchor (no layout shift)
+            wrapper.Location = origLoc;
+            wrapper.Size     = origSize;
+            wrapper.Anchor   = origAnchor;
+        }
+
+        // Move the TextBox inside the wrapper
+        parent.Controls.Remove(tb);
+        tb.Anchor   = AnchorStyles.None;
+        tb.Dock     = DockStyle.None;
+        tb.Location = Point.Empty;
+
+        if (tb.Multiline)
+        {
+            // Multi-line: fill the wrapper with a small inset so the text
+            // doesn't run into the rounded corners.
+            tb.Dock = DockStyle.Fill;
+            wrapper.Padding = new Padding(4);
+        }
+        else
+        {
+            // Single-line: stretch horizontally, center vertically.
+            // We keep Dock = None so WinForms respects the auto-sized height.
+            tb.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+            void PositionTb()
+            {
+                const int HP = 6;   // horizontal padding inside the rounded rect
+                tb.Left  = HP;
+                tb.Width = Math.Max(4, wrapper.ClientSize.Width - HP * 2);
+                tb.Top   = Math.Max(0, (wrapper.ClientSize.Height - tb.Height) / 2);
+            }
+            PositionTb();
+            wrapper.SizeChanged += (_, _) => PositionTb();
+        }
+
+        wrapper.Controls.Add(tb);
+        parent.Controls.Add(wrapper);
+        parent.Controls.SetChildIndex(wrapper, origIndex);
+
+        // Focus ring: glow the border when the inner TextBox has focus
+        tb.GotFocus  += (_, _) => wrapper.SetFocused(true);
+        tb.LostFocus += (_, _) => wrapper.SetFocused(false);
     }
 
     public static void StyleComboBox(ComboBox cb)
