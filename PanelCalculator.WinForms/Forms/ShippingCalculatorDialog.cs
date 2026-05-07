@@ -186,7 +186,7 @@ public class ShippingCalculatorDialog : Form
         _btnTerapkan.Click += BtnTerapkan_Click;
 
         _btnBatal = new Button { Text = "Batal", Width = 90, Height = 36 };
-        AppTheme.StyleButton(_btnBatal, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(_btnBatal, AppTheme.Bg2, AppTheme.Text2);
         _btnBatal.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
 
         _scrollPanel.Controls.AddRange(new Control[] { _btnTerapkan, _btnBatal });

@@ -107,7 +107,7 @@ public partial class MainForm : Form
             Height      = 60,
             ColumnCount = 2,
             RowCount    = 1,
-            BackColor   = Color.FromArgb(30, 41, 59),
+            BackColor   = AppTheme.BgHeader,
             Padding     = new Padding(0),
             Margin      = new Padding(0)
         };
@@ -140,11 +140,11 @@ public partial class MainForm : Form
             Margin        = new Padding(0)
         };
 
-        btnDashboard = MakeToolbarButton("📊 Dashboard",     Color.FromArgb(55, 65, 81),  120);
-        btnNew      = MakeToolbarButton("＋ Estimasi Baru", Color.FromArgb(59, 130, 246), 140);
-        btnHistory  = MakeToolbarButton("📋 Riwayat",       Color.FromArgb(55, 65, 81),  110);
-        btnReports  = MakeToolbarButton("📊 Laporan",       Color.FromArgb(55, 65, 81),  110);
-        btnSettings = MakeToolbarButton("⚙ Settings",       Color.FromArgb(55, 65, 81),  110);
+        btnDashboard = MakeToolbarButton("📊 Dashboard",     AppTheme.Bg2,      120);
+        btnNew      = MakeToolbarButton("＋ Estimasi Baru", AppTheme.Brand500, 140);
+        btnHistory  = MakeToolbarButton("📋 Riwayat",       AppTheme.Bg2,      110);
+        btnReports  = MakeToolbarButton("📊 Laporan",       AppTheme.Bg2,      110);
+        btnSettings = MakeToolbarButton("⚙ Settings",       AppTheme.Bg2,      110);
 
         btnDashboard.Click += BtnDashboard_Click;
         btnNew.Click      += BtnNew_Click;
@@ -169,7 +169,7 @@ public partial class MainForm : Form
         {
             Dock      = DockStyle.Bottom,
             Height    = 28,
-            BackColor = Color.FromArgb(248, 250, 252),
+            BackColor = AppTheme.Bg1,
             Padding   = new Padding(12, 0, 12, 0)
         };
         statusBar.Paint += (s, e) =>
@@ -249,13 +249,13 @@ public partial class MainForm : Form
             Width     = 90,
             Height    = 26,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(16, 185, 129),
+            BackColor = AppTheme.Success500,
             ForeColor = Color.White,
             Font      = AppTheme.FontSmall,
             Cursor    = Cursors.Hand
         };
         btnAddProduct.FlatAppearance.BorderSize = 0;
-        btnAddProduct.FlatAppearance.MouseOverBackColor = Color.FromArgb(5, 150, 105);
+        btnAddProduct.FlatAppearance.MouseOverBackColor = AppTheme.Success400;
         btnAddProduct.Click += BtnAddProduct_Click;
 
         var btnExportProd = new Button
@@ -265,13 +265,13 @@ public partial class MainForm : Form
             Width     = 82,
             Height    = 26,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(55, 65, 81),
-            ForeColor = Color.White,
+            BackColor = AppTheme.Bg2,
+            ForeColor = AppTheme.Text2,
             Font      = AppTheme.FontSmall,
             Cursor    = Cursors.Hand
         };
         btnExportProd.FlatAppearance.BorderSize = 0;
-        btnExportProd.FlatAppearance.MouseOverBackColor = Color.FromArgb(75, 85, 99);
+        btnExportProd.FlatAppearance.MouseOverBackColor = AppTheme.Bg3;
         btnExportProd.Click += BtnExportProducts_Click;
 
         // DockStyle.Right: last-added appears leftmost → Export left of Tambah
@@ -374,14 +374,14 @@ public partial class MainForm : Form
         AppTheme.StyleComboBox(cmbTargetSection);
         cmbTargetSection.Items.AddRange(Sections);
         cmbTargetSection.SelectedIndex = 0; // default: Material Utama
-        // Update background color to match selected section
+        // Update background color to match selected section (dark tinted variants)
         cmbTargetSection.SelectedIndexChanged += (s, e) =>
         {
             cmbTargetSection.BackColor = cmbTargetSection.SelectedIndex switch
             {
-                1 => Color.FromArgb(254, 249, 195), // Material Pendukung – kuning
-                2 => Color.FromArgb(220, 252, 231), // Material Lainnya   – hijau
-                _ => Color.White                    // Material Utama
+                1 => Color.FromArgb(38, 30, 10),   // Material Pendukung – dark amber tint
+                2 => Color.FromArgb(10, 32, 22),   // Material Lainnya   – dark green tint
+                _ => AppTheme.Bg2                  // Material Utama     – default dark
             };
         };
 
@@ -560,7 +560,7 @@ public partial class MainForm : Form
             Width    = 160,
             Height   = 30
         };
-        AppTheme.StyleButton(btnHitungOngkir, Color.FromArgb(55, 65, 81), Color.White);
+        AppTheme.StyleButton(btnHitungOngkir, AppTheme.Bg2, AppTheme.Text2);
         btnHitungOngkir.Click += BtnHitungOngkir_Click;
         pnlSummary.Controls.Add(btnHitungOngkir);
 
@@ -593,6 +593,7 @@ public partial class MainForm : Form
             Minimum = 0, Maximum = 50, DecimalPlaces = 1, Value = _taxPercent,
             Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        AppTheme.StyleNumericUpDown(numTax);
         numTax.ValueChanged += NumTax_ValueChanged;
         pnlSummary.Controls.Add(numTax);
         y += 30;
@@ -613,6 +614,7 @@ public partial class MainForm : Form
             Minimum = 0, Maximum = 20, DecimalPlaces = 1, Value = _pphPercent,
             Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        AppTheme.StyleNumericUpDown(numPPh);
         numPPh.ValueChanged += NumPPh_ValueChanged;
         pnlSummary.Controls.Add(numPPh);
         y += 30;
@@ -697,6 +699,7 @@ public partial class MainForm : Form
             Minimum = -100, Maximum = 500, DecimalPlaces = 1, Value = initialValue,
             Font = AppTheme.FontBase, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        AppTheme.StyleNumericUpDown(num);
         num.ValueChanged += onChanged;
         parent.Controls.Add(num);
         y += 28;

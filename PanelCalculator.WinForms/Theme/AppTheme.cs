@@ -1,120 +1,287 @@
 namespace PanelCalculator.WinForms.Theme;
 
+/// <summary>
+/// Dark Pro design tokens — navy-blue palette with electric-blue brand &amp; cyan accent.
+/// Mirrors the CSS token system from tokens.css.
+/// </summary>
 public static class AppTheme
 {
-    // Colors
-    public static readonly Color Background     = Color.FromArgb(245, 247, 250);
-    public static readonly Color SidebarBg      = Color.FromArgb(255, 255, 255);
-    public static readonly Color CardBg         = Color.FromArgb(255, 255, 255);
-    public static readonly Color Primary        = Color.FromArgb(37, 99, 235);   // Blue
-    public static readonly Color PrimaryHover   = Color.FromArgb(29, 78, 216);
-    public static readonly Color Success        = Color.FromArgb(22, 163, 74);   // Green
-    public static readonly Color SuccessHover   = Color.FromArgb(21, 128, 61);
-    public static readonly Color Danger         = Color.FromArgb(220, 38, 38);   // Red
-    public static readonly Color Warning        = Color.FromArgb(234, 179, 8);   // Yellow
-    public static readonly Color TextPrimary    = Color.FromArgb(17, 24, 39);
-    public static readonly Color TextSecondary  = Color.FromArgb(107, 114, 128);
-    public static readonly Color TextMuted      = Color.FromArgb(156, 163, 175);
-    public static readonly Color Border         = Color.FromArgb(229, 231, 235);
-    public static readonly Color BorderFocus    = Color.FromArgb(37, 99, 235);
-    public static readonly Color GridHeader     = Color.FromArgb(249, 250, 251);
-    public static readonly Color GridAltRow     = Color.FromArgb(250, 251, 252);
-    public static readonly Color TotalBg        = Color.FromArgb(239, 246, 255);
-    public static readonly Color TotalText      = Color.FromArgb(30, 64, 175);
+    // ════════════════════════════════════════════════════════
+    //  PALETTE — background scale (dark navy)
+    // ════════════════════════════════════════════════════════
 
-    // Fonts
-    public static readonly Font FontBase        = new Font("Segoe UI", 9f, FontStyle.Regular);
-    public static readonly Font FontSmall       = new Font("Segoe UI", 8f, FontStyle.Regular);
-    public static readonly Font FontBold        = new Font("Segoe UI", 9f, FontStyle.Bold);
-    public static readonly Font FontLarge       = new Font("Segoe UI", 11f, FontStyle.Bold);
-    public static readonly Font FontTitle       = new Font("Segoe UI", 14f, FontStyle.Bold);
-    public static readonly Font FontTotal       = new Font("Segoe UI", 16f, FontStyle.Bold);
-    public static readonly Font FontLabel       = new Font("Segoe UI", 8f, FontStyle.Regular);
+    /// <summary>#060912 — canvas / app background</summary>
+    public static readonly Color Bg0      = Color.FromArgb(  6,   9,  18);
+    /// <summary>#0b1020 — panel surface</summary>
+    public static readonly Color Bg1      = Color.FromArgb( 11,  16,  32);
+    /// <summary>#111733 — raised surface / row hover</summary>
+    public static readonly Color Bg2      = Color.FromArgb( 17,  23,  51);
+    /// <summary>#1a2247 — selected row / active state</summary>
+    public static readonly Color Bg3      = Color.FromArgb( 26,  34,  71);
+    /// <summary>#0f1530 — card / modal / elevated surface</summary>
+    public static readonly Color BgElev   = Color.FromArgb( 15,  21,  48);
+    /// <summary>#0d1430 — topbar / header gradient start</summary>
+    public static readonly Color BgHeader = Color.FromArgb( 13,  20,  48);
 
-    // Apply flat styling to a Button
+    // ════════════════════════════════════════════════════════
+    //  BORDERS
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>Subtle border (solid approx of rgba(120,150,220,0.10))</summary>
+    public static readonly Color Border1      = Color.FromArgb( 20,  27,  56);
+    /// <summary>Normal border (solid approx of rgba(120,150,220,0.18))</summary>
+    public static readonly Color Border2      = Color.FromArgb( 28,  36,  68);
+    /// <summary>Strong border (solid approx of rgba(140,170,240,0.30))</summary>
+    public static readonly Color BorderStrong = Color.FromArgb( 40,  52,  90);
+    /// <summary>Semi-transparent normal border for controls that support alpha</summary>
+    public static readonly Color Border2Alpha = Color.FromArgb( 46, 120, 150, 220);
+
+    // ════════════════════════════════════════════════════════
+    //  BRAND — electric blue
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>#6e94ff — code / accent text</summary>
+    public static readonly Color Brand300 = Color.FromArgb(110, 148, 255);
+    /// <summary>#4a78ff</summary>
+    public static readonly Color Brand400 = Color.FromArgb( 74, 120, 255);
+    /// <summary>#2a5cff — primary action colour</summary>
+    public static readonly Color Brand500 = Color.FromArgb( 42,  92, 255);
+    /// <summary>#1c46e6 — pressed / darker variant</summary>
+    public static readonly Color Brand600 = Color.FromArgb( 28,  70, 230);
+
+    // ════════════════════════════════════════════════════════
+    //  CYAN ACCENT
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>#7df0ff — lighter cyan, selected-row text</summary>
+    public static readonly Color Cyan300 = Color.FromArgb(125, 240, 255);
+    /// <summary>#2cdcff — main cyan accent, section titles</summary>
+    public static readonly Color Cyan400 = Color.FromArgb( 44, 220, 255);
+    /// <summary>#00c2ff</summary>
+    public static readonly Color Cyan500 = Color.FromArgb(  0, 194, 255);
+
+    // ════════════════════════════════════════════════════════
+    //  STATUS COLOURS
+    // ════════════════════════════════════════════════════════
+
+    public static readonly Color Success400 = Color.FromArgb( 45, 212, 154);  // #2dd49a
+    public static readonly Color Success500 = Color.FromArgb( 16, 185, 129);  // #10b981
+    public static readonly Color Warning400 = Color.FromArgb(255, 181,  71);  // #ffb547
+    public static readonly Color Warning500 = Color.FromArgb(245, 158,  11);  // #f59e0b
+    public static readonly Color Danger400  = Color.FromArgb(255, 107, 107);  // #ff6b6b
+    public static readonly Color Danger500  = Color.FromArgb(239,  68,  68);  // #ef4444
+
+    // ════════════════════════════════════════════════════════
+    //  TEXT
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>#eef2ff — primary text</summary>
+    public static readonly Color Text1     = Color.FromArgb(238, 242, 255);
+    /// <summary>#aab5d6 — secondary text</summary>
+    public static readonly Color Text2     = Color.FromArgb(170, 181, 214);
+    /// <summary>#6e7a9e — tertiary / placeholder</summary>
+    public static readonly Color Text3     = Color.FromArgb(110, 122, 158);
+    /// <summary>#4a5576 — muted / de-emphasised</summary>
+    public static readonly Color TextMutedColor = Color.FromArgb( 74,  85, 118);
+
+    // ════════════════════════════════════════════════════════
+    //  LEGACY ALIASES  (keeps all existing form code compiling)
+    // ════════════════════════════════════════════════════════
+
+    public static Color Background    => Bg0;
+    public static Color SidebarBg     => Bg1;
+    public static Color CardBg        => BgElev;
+    public static Color Primary       => Brand500;
+    public static Color PrimaryHover  => Brand600;
+    public static Color Success       => Success500;
+    public static Color SuccessHover  => Success400;
+    public static Color Danger        => Danger500;
+    public static Color Warning       => Warning500;
+    public static Color TextPrimary   => Text1;
+    public static Color TextSecondary => Text2;
+    public static Color TextMuted     => Text3;
+    public static Color Border        => Border2;
+    public static Color BorderFocus   => Brand400;
+    public static Color GridHeader    => BgElev;
+    public static Color GridAltRow    => Bg2;
+    public static Color TotalBg       => Bg3;
+    public static Color TotalText     => Cyan300;
+
+    // ════════════════════════════════════════════════════════
+    //  STATUS TAG COLOURS  (status → fg, bg)
+    // ════════════════════════════════════════════════════════
+
+    public static (Color fg, Color bg) GetStatusColor(string? status) => status?.Trim() switch
+    {
+        "Antri Hitung"     => (Warning400,  Color.FromArgb( 40, 30, 15)),
+        "Selesai Dihitung" => (Cyan300,     Color.FromArgb(  8, 28, 40)),
+        "Menunggu Approve" => (Warning400,  Color.FromArgb( 40, 30, 10)),
+        "Sudah Diapprove"  => (Success400,  Color.FromArgb(  8, 32, 22)),
+        "Approved"         => (Success400,  Color.FromArgb(  8, 32, 22)),
+        "Draft"            => (Text3,       Color.FromArgb( 18, 20, 36)),
+        _                  => (Text3,       Color.FromArgb( 18, 20, 36))
+    };
+
+    // ════════════════════════════════════════════════════════
+    //  FONTS
+    // ════════════════════════════════════════════════════════
+
+    public static readonly Font FontBase    = new Font("Segoe UI", 9f,  FontStyle.Regular);
+    public static readonly Font FontSmall   = new Font("Segoe UI", 8f,  FontStyle.Regular);
+    public static readonly Font FontBold    = new Font("Segoe UI", 9f,  FontStyle.Bold);
+    public static readonly Font FontLarge   = new Font("Segoe UI", 11f, FontStyle.Bold);
+    public static readonly Font FontTitle   = new Font("Segoe UI", 14f, FontStyle.Bold);
+    public static readonly Font FontTotal   = new Font("Segoe UI", 18f, FontStyle.Bold);
+    public static readonly Font FontLabel   = new Font("Segoe UI", 8f,  FontStyle.Regular);
+    public static readonly Font FontMono    = new Font("Consolas",  8f,  FontStyle.Regular);
+    /// <summary>Uppercase caption / section label (7 pt bold).</summary>
+    public static readonly Font FontCaption = new Font("Segoe UI", 7f,  FontStyle.Bold);
+    public static readonly Font FontCode    = new Font("Consolas",  8.5f, FontStyle.Regular);
+
+    // ════════════════════════════════════════════════════════
+    //  BUTTON HELPERS
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>Generic flat button with custom bg/fg.</summary>
     public static void StyleButton(Button btn, Color bgColor, Color textColor)
     {
         btn.FlatStyle = FlatStyle.Flat;
         btn.BackColor = bgColor;
         btn.ForeColor = textColor;
-        btn.FlatAppearance.BorderSize = 0;
-        btn.Font = FontBold;
+        btn.FlatAppearance.BorderSize  = 0;
+        btn.FlatAppearance.MouseOverBackColor = Lighten(bgColor, 18);
+        btn.Font   = FontBold;
         btn.Cursor = Cursors.Hand;
         btn.Padding = new Padding(8, 4, 8, 4);
     }
 
-    // Apply flat styling to a TextBox
+    public static void StyleButtonPrimary(Button btn) => StyleButton(btn, Brand500, Color.White);
+
+    public static void StyleButtonSuccess(Button btn) => StyleButton(btn, Success500, Color.White);
+
+    public static void StyleButtonDanger(Button btn) => StyleButton(btn, Danger500, Color.White);
+
+    /// <summary>Ghost / secondary button — dark background, subtle border.</summary>
+    public static void StyleButtonGhost(Button btn)
+    {
+        btn.FlatStyle = FlatStyle.Flat;
+        btn.BackColor = Bg2;
+        btn.ForeColor = Text2;
+        btn.FlatAppearance.BorderSize  = 1;
+        btn.FlatAppearance.BorderColor = Border2;
+        btn.FlatAppearance.MouseOverBackColor = Bg3;
+        btn.Font   = FontBold;
+        btn.Cursor = Cursors.Hand;
+        btn.Padding = new Padding(8, 4, 8, 4);
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  INPUT HELPERS
+    // ════════════════════════════════════════════════════════
+
     public static void StyleTextBox(TextBox tb)
     {
         tb.BorderStyle = BorderStyle.FixedSingle;
-        tb.Font = FontBase;
-        tb.BackColor = Color.White;
-        tb.ForeColor = TextPrimary;
+        tb.Font        = FontBase;
+        tb.BackColor   = Bg2;
+        tb.ForeColor   = Text1;
     }
 
-    // Apply flat styling to a ComboBox
     public static void StyleComboBox(ComboBox cb)
     {
         cb.FlatStyle = FlatStyle.Flat;
-        cb.Font = FontBase;
-        cb.BackColor = Color.White;
-        cb.ForeColor = TextPrimary;
+        cb.Font      = FontBase;
+        cb.BackColor = Bg2;
+        cb.ForeColor = Text1;
     }
 
-    // Apply styling to DataGridView
+    public static void StyleNumericUpDown(NumericUpDown nud)
+    {
+        nud.BackColor   = Bg2;
+        nud.ForeColor   = Text1;
+        nud.Font        = FontBase;
+        nud.BorderStyle = BorderStyle.FixedSingle;
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  DATA GRID HELPER
+    // ════════════════════════════════════════════════════════
+
     public static void StyleGrid(DataGridView dgv)
     {
-        dgv.BackgroundColor = Color.White;
-        dgv.BorderStyle = BorderStyle.None;
+        dgv.BackgroundColor = Bg1;
+        dgv.BorderStyle     = BorderStyle.None;
         dgv.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
         dgv.ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None;
-        dgv.GridColor = Border;
+        dgv.GridColor       = Border2;
         dgv.RowHeadersVisible = false;
-        dgv.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        dgv.SelectionMode   = DataGridViewSelectionMode.FullRowSelect;
         dgv.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         dgv.AllowUserToResizeRows = false;
-        dgv.MultiSelect = false;
-        dgv.ReadOnly = false;
+        dgv.MultiSelect     = false;
+        dgv.ReadOnly        = false;
         dgv.AllowUserToAddRows = false;
-        dgv.Font = FontBase;
+        dgv.Font            = FontBase;
+        dgv.EnableHeadersVisualStyles = false;
 
-        // Header style
-        dgv.ColumnHeadersDefaultCellStyle.BackColor = GridHeader;
-        dgv.ColumnHeadersDefaultCellStyle.ForeColor = TextSecondary;
-        dgv.ColumnHeadersDefaultCellStyle.Font = FontBold;
-        dgv.ColumnHeadersDefaultCellStyle.Padding = new Padding(8, 6, 8, 6);
+        // Column headers
+        dgv.ColumnHeadersDefaultCellStyle.BackColor          = BgElev;
+        dgv.ColumnHeadersDefaultCellStyle.ForeColor          = Text3;
+        dgv.ColumnHeadersDefaultCellStyle.Font               = FontCaption;
+        dgv.ColumnHeadersDefaultCellStyle.Padding            = new Padding(8, 6, 8, 6);
+        dgv.ColumnHeadersDefaultCellStyle.SelectionBackColor = BgElev;
+        dgv.ColumnHeadersDefaultCellStyle.SelectionForeColor = Text3;
         dgv.ColumnHeadersHeight = 38;
 
-        // Row style
-        dgv.DefaultCellStyle.ForeColor = TextPrimary;
-        dgv.DefaultCellStyle.SelectionBackColor = Color.FromArgb(219, 234, 254);
-        dgv.DefaultCellStyle.SelectionForeColor = Primary;
-        dgv.DefaultCellStyle.Padding = new Padding(6, 4, 6, 4);
+        // Default cell style
+        dgv.DefaultCellStyle.BackColor          = Bg1;
+        dgv.DefaultCellStyle.ForeColor          = Text2;
+        dgv.DefaultCellStyle.SelectionBackColor = Bg3;
+        dgv.DefaultCellStyle.SelectionForeColor = Cyan300;
+        dgv.DefaultCellStyle.Padding            = new Padding(6, 4, 6, 4);
         dgv.RowTemplate.Height = 34;
 
-        // Alternating row
-        dgv.AlternatingRowsDefaultCellStyle.BackColor = GridAltRow;
+        // Alternating rows
+        dgv.AlternatingRowsDefaultCellStyle.BackColor          = Bg2;
+        dgv.AlternatingRowsDefaultCellStyle.ForeColor          = Text2;
+        dgv.AlternatingRowsDefaultCellStyle.SelectionBackColor = Bg3;
+        dgv.AlternatingRowsDefaultCellStyle.SelectionForeColor = Cyan300;
     }
 
-    // Create a styled label
+    // ════════════════════════════════════════════════════════
+    //  FACTORY HELPERS
+    // ════════════════════════════════════════════════════════
+
     public static Label MakeLabel(string text, Font? font = null, Color? color = null)
-    {
-        return new Label
-        {
-            Text = text,
-            Font = font ?? FontBase,
-            ForeColor = color ?? TextPrimary,
-            AutoSize = true
-        };
-    }
+        => new Label { Text = text, Font = font ?? FontBase, ForeColor = color ?? Text1, AutoSize = true };
 
-    // Create a styled panel as card
-    public static Panel MakeCard()
-    {
-        return new Panel
+    /// <summary>Uppercase cyan section-title label (like kp-section-title).</summary>
+    public static Label MakeSectionTitle(string text)
+        => new Label
         {
-            BackColor = CardBg,
-            Padding = new Padding(16)
+            Text      = text.ToUpper(),
+            Font      = FontCaption,
+            ForeColor = Cyan400,
+            AutoSize  = true
         };
-    }
+
+    /// <summary>Elevated dark card panel.</summary>
+    public static Panel MakeCard()
+        => new Panel { BackColor = BgElev, Padding = new Padding(16) };
+
+    /// <summary>Horizontal rule separator.</summary>
+    public static Panel MakeSeparator()
+        => new Panel { Height = 1, BackColor = Border2, Dock = DockStyle.Top };
+
+    // ════════════════════════════════════════════════════════
+    //  UTILITY
+    // ════════════════════════════════════════════════════════
+
+    /// <summary>Lightens a colour by adding <paramref name="amount"/> to each channel.</summary>
+    private static Color Lighten(Color c, int amount)
+        => Color.FromArgb(
+            c.A,
+            Math.Min(255, c.R + amount),
+            Math.Min(255, c.G + amount),
+            Math.Min(255, c.B + amount));
 }

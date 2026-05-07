@@ -59,10 +59,10 @@ public class ProductEditDialog : Form
         BackColor       = AppTheme.Background;
 
         // ── Header ───────────────────────────────────────────────────────
-        var pnlHead = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = Color.White };
+        var pnlHead = new Panel { Dock = DockStyle.Top, Height = 50, BackColor = AppTheme.BgHeader };
         pnlHead.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, pnlHead.Height - 1, pnlHead.Width, pnlHead.Height - 1);
         };
         var icon = _editing == null ? "➕" : "✏";
@@ -201,10 +201,10 @@ public class ProductEditDialog : Form
         pnlBody.Controls.Add(new Panel { Location = new Point(M, y), Height = 1, Width = 1 });
 
         // ── Footer ────────────────────────────────────────────────────────
-        var pnlFoot = new Panel { Dock = DockStyle.Bottom, Height = 52, BackColor = Color.White };
+        var pnlFoot = new Panel { Dock = DockStyle.Bottom, Height = 52, BackColor = AppTheme.Bg1 };
         pnlFoot.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, 0, pnlFoot.Width, 0);
         };
 
@@ -225,7 +225,7 @@ public class ProductEditDialog : Form
             Height       = 34,
             DialogResult = DialogResult.Cancel
         };
-        AppTheme.StyleButton(btnCancel, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(btnCancel, AppTheme.Bg2, AppTheme.Text2);
 
         pnlFoot.Layout += (s, e) =>
         {

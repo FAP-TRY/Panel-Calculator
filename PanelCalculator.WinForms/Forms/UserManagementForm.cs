@@ -32,12 +32,12 @@ public class UserManagementForm : Form
         {
             Dock      = DockStyle.Top,
             Height    = 56,
-            BackColor = Color.White,
+            BackColor = AppTheme.BgHeader,
             Padding   = new Padding(16, 10, 16, 10)
         };
         pnlTop.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, pnlTop.Height - 1, pnlTop.Width, pnlTop.Height - 1);
         };
 
@@ -79,7 +79,7 @@ public class UserManagementForm : Form
         };
 
         var btnEdit = new Button { Text = "✏ Edit", Location = new Point(16, 10), Width = 110, Height = 36 };
-        AppTheme.StyleButton(btnEdit, Color.FromArgb(107, 114, 128), Color.White);
+        AppTheme.StyleButton(btnEdit, AppTheme.Bg2, AppTheme.Text2);
         btnEdit.Click += BtnEdit_Click;
 
         var btnToggle = new Button { Text = "🔒 Nonaktifkan", Location = new Point(138, 10), Width = 140, Height = 36 };

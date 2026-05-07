@@ -10,8 +10,8 @@ public class LoginForm : Form
 {
     private readonly PanelCalculatorContext _context;
 
-    public bool LoginSuccess { get; private set; }
-    public User? LoggedInUser { get; private set; }
+    public bool  LoginSuccess  { get; private set; }
+    public User? LoggedInUser  { get; private set; }
 
     private TextBox txtUsername = null!;
     private TextBox txtPassword = null!;
@@ -27,97 +27,233 @@ public class LoginForm : Form
     private void BuildUI()
     {
         Text            = "Kalkulator Panel Tritunggal Swarna";
-        Size            = new Size(420, 500);
+        Size            = new Size(440, 560);
         StartPosition   = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox     = false;
-        BackColor       = AppTheme.Background;
+        BackColor       = AppTheme.Bg0;
 
-        // ── Top banner ───────────────────────────────────────────────
-        var pnlBanner = new Panel
+        // ── Background gradient painted on the form ───────────────────────
+        Paint += (s, e) =>
         {
-            Dock      = DockStyle.Top,
-            Height    = 140,
-            BackColor = AppTheme.Primary
+            var g = e.Graphics;
+            // Radial glow top-left (brand blue)
+            using var pathTop = new System.Drawing.Drawing2D.GraphicsPath();
+            pathTop.AddEllipse(-80, -80, 380, 380);
+            using var brushTop = new System.Drawing.Drawing2D.PathGradientBrush(pathTop);
+            brushTop.CenterColor   = Color.FromArgb(55, 42, 92, 255);
+            brushTop.SurroundColors = new[] { Color.Transparent };
+            g.FillPath(brushTop, pathTop);
+
+            // Radial glow bottom-right (cyan)
+            using var pathBot = new System.Drawing.Drawing2D.GraphicsPath();
+            pathBot.AddEllipse(Width - 160, Height - 160, 300, 300);
+            using var brushBot = new System.Drawing.Drawing2D.PathGradientBrush(pathBot);
+            brushBot.CenterColor    = Color.FromArgb(40, 0, 194, 255);
+            brushBot.SurroundColors = new[] { Color.Transparent };
+            g.FillPath(brushBot, pathBot);
         };
 
-        var lblAppName = new Label
+        // ── Card panel ────────────────────────────────────────────────────
+        var card = new Panel
+        {
+            Size      = new Size(364, 460),
+            BackColor = AppTheme.BgElev,
+        };
+        // Centre card within form
+        Resize += (s, e) =>
+        {
+            card.Location = new Point(
+                (ClientSize.Width  - card.Width)  / 2,
+                (ClientSize.Height - card.Height) / 2);
+        };
+        card.Location = new Point(38, 50);
+
+        // Card border (custom paint)
+        card.Paint += (s, e) =>
+        {
+            var g  = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var rect = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
+            using var pen = new Pen(AppTheme.BorderStrong);
+            int r = 14;
+            DrawRoundRect(g, pen, rect, r);
+        };
+
+        int y = 36;
+
+        // ── Logo mark ─────────────────────────────────────────────────────
+        var pnlMark = new Panel
+        {
+            Size     = new Size(64, 64),
+            Location = new Point((card.Width - 64) / 2, y),
+            BackColor = AppTheme.Brand500,
+            Cursor   = Cursors.Default
+        };
+        pnlMark.Paint += (s, e) =>
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            // Rounded square bg
+            using var b = new SolidBrush(AppTheme.Brand500);
+            g.FillRectangle(b, 0, 0, pnlMark.Width, pnlMark.Height);
+            // Lightning bolt ⚡
+            using var font = new Font("Segoe UI Emoji", 26f);
+            using var fb   = new SolidBrush(Color.White);
+            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString("⚡", font, fb, new RectangleF(0, 0, pnlMark.Width, pnlMark.Height), sf);
+        };
+        card.Controls.Add(pnlMark);
+        y += 74;
+
+        // App title gradient text
+        var lblTitle = new Label
         {
             Text      = "Kalkulator Panel",
-            Font      = new Font("Segoe UI", 18f, FontStyle.Bold),
-            ForeColor = Color.White,
-            AutoSize  = false,
+            Font      = new Font("Segoe UI", 20f, FontStyle.Bold),
+            ForeColor = AppTheme.Text1,
             TextAlign = ContentAlignment.MiddleCenter,
-            Dock      = DockStyle.Fill
-        };
-
-        var lblSubtitle = new Label
-        {
-            Text      = "Tritunggal Swarna",
-            Font      = new Font("Segoe UI", 11f, FontStyle.Regular),
-            ForeColor = Color.FromArgb(190, 215, 255),
             AutoSize  = false,
-            TextAlign = ContentAlignment.TopCenter,
-            Dock      = DockStyle.Bottom,
-            Height    = 30
+            Size      = new Size(card.Width, 32),
+            Location  = new Point(0, y),
         };
+        card.Controls.Add(lblTitle);
+        y += 36;
 
-        pnlBanner.Controls.Add(lblAppName);
-        pnlBanner.Controls.Add(lblSubtitle);
-
-        // ── Login card ───────────────────────────────────────────────
-        var pnlCard = new Panel
+        var lblSub = new Label
         {
-            Padding   = new Padding(32, 24, 32, 24),
-            BackColor = Color.White,
-            Dock      = DockStyle.Fill
+            Text      = "Tritunggal Swarna · Engineering Suite",
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.Text3,
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoSize  = false,
+            Size      = new Size(card.Width, 18),
+            Location  = new Point(0, y),
         };
+        card.Controls.Add(lblSub);
+        y += 30;
 
-        var lblTitle = AppTheme.MakeLabel("Masuk ke Sistem", AppTheme.FontLarge, AppTheme.TextPrimary);
-        lblTitle.Location  = new Point(32, 20);
-        lblTitle.AutoSize  = true;
+        // Separator
+        var sep = new Panel { Location = new Point(24, y), Size = new Size(card.Width - 48, 1), BackColor = AppTheme.Border2 };
+        card.Controls.Add(sep);
+        y += 18;
 
-        var lblUser = AppTheme.MakeLabel("Username", AppTheme.FontSmall, AppTheme.TextSecondary);
-        lblUser.Location = new Point(32, 66);
+        // ── "Masuk ke Sistem" sub-heading ─────────────────────────────────
+        var lblSignIn = new Label
+        {
+            Text      = "🔐  Masuk ke Sistem",
+            Font      = AppTheme.FontBold,
+            ForeColor = AppTheme.Text1,
+            Location  = new Point(24, y),
+            AutoSize  = true,
+        };
+        card.Controls.Add(lblSignIn);
+        y += 22;
 
-        txtUsername = new TextBox { Location = new Point(32, 84), Width = 320, Height = 32, PlaceholderText = "Masukkan username" };
+        var lblCred = new Label
+        {
+            Text      = "Gunakan kredensial yang diberikan administrator",
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.Text3,
+            Location  = new Point(24, y),
+            AutoSize  = true,
+        };
+        card.Controls.Add(lblCred);
+        y += 26;
+
+        // Username
+        var lblUser = AppTheme.MakeLabel("USERNAME", AppTheme.FontCaption, AppTheme.Text3);
+        lblUser.Location = new Point(24, y);
+        card.Controls.Add(lblUser);
+        y += 16;
+
+        txtUsername = new TextBox
+        {
+            Location        = new Point(24, y),
+            Width           = card.Width - 48,
+            PlaceholderText = "Masukkan username",
+        };
         AppTheme.StyleTextBox(txtUsername);
         txtUsername.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; txtPassword.Focus(); } };
+        card.Controls.Add(txtUsername);
+        y += 34;
 
-        var lblPass = AppTheme.MakeLabel("Password", AppTheme.FontSmall, AppTheme.TextSecondary);
-        lblPass.Location = new Point(32, 128);
+        // Password
+        var lblPass = AppTheme.MakeLabel("PASSWORD", AppTheme.FontCaption, AppTheme.Text3);
+        lblPass.Location = new Point(24, y);
+        card.Controls.Add(lblPass);
+        y += 16;
 
-        txtPassword = new TextBox { Location = new Point(32, 146), Width = 320, Height = 32, UseSystemPasswordChar = true, PlaceholderText = "Masukkan password" };
+        txtPassword = new TextBox
+        {
+            Location              = new Point(24, y),
+            Width                 = card.Width - 48,
+            UseSystemPasswordChar = true,
+            PlaceholderText       = "Masukkan password",
+        };
         AppTheme.StyleTextBox(txtPassword);
         txtPassword.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; DoLogin(); } };
+        card.Controls.Add(txtPassword);
+        y += 36;
 
+        // Error label
         lblError = new Label
         {
-            Location  = new Point(32, 192),
-            Size      = new Size(320, 24),
-            ForeColor = AppTheme.Danger,
+            Location  = new Point(24, y),
+            Size      = new Size(card.Width - 48, 20),
+            ForeColor = AppTheme.Danger400,
             Font      = AppTheme.FontSmall,
             Text      = "",
-            Visible   = false
+            Visible   = false,
         };
+        card.Controls.Add(lblError);
+        y += 22;
 
-        btnLogin = new Button { Location = new Point(32, 226), Width = 320, Height = 40, Text = "Masuk" };
-        AppTheme.StyleButton(btnLogin, AppTheme.Primary, Color.White);
-        btnLogin.Font   = new Font("Segoe UI", 10f, FontStyle.Bold);
+        // Login button
+        btnLogin = new Button
+        {
+            Location = new Point(24, y),
+            Width    = card.Width - 48,
+            Height   = 44,
+            Text     = "Masuk  →",
+            Font     = new Font("Segoe UI", 10f, FontStyle.Bold),
+        };
+        AppTheme.StyleButton(btnLogin, AppTheme.Brand500, Color.White);
         btnLogin.Click += (s, e) => DoLogin();
+        card.Controls.Add(btnLogin);
+        y += 54;
 
-        var lblVersion = AppTheme.MakeLabel("v1.0  •  © 2026 Tritunggal Swarna", AppTheme.FontSmall, AppTheme.TextMuted);
-        lblVersion.Location = new Point(32, 290);
-        lblVersion.AutoSize = true;
+        // Footer
+        var lblVersion = new Label
+        {
+            Text      = "v1.0  ·  © 2026 Tritunggal Swarna",
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.TextMutedColor,
+            TextAlign = ContentAlignment.MiddleCenter,
+            AutoSize  = false,
+            Size      = new Size(card.Width, 18),
+            Location  = new Point(0, y),
+        };
+        card.Controls.Add(lblVersion);
 
-        pnlCard.Controls.AddRange(new Control[] { lblTitle, lblUser, txtUsername, lblPass, txtPassword, lblError, btnLogin, lblVersion });
-
-        Controls.Add(pnlCard);
-        Controls.Add(pnlBanner);
-
+        Controls.Add(card);
         AcceptButton = btnLogin;
     }
 
+    // ── Round-rect drawing helper ─────────────────────────────────────────
+    private static void DrawRoundRect(Graphics g, Pen pen, Rectangle r, int radius)
+    {
+        int d = radius * 2;
+        using var path = new System.Drawing.Drawing2D.GraphicsPath();
+        path.AddArc(r.X,               r.Y,               d, d, 180, 90);
+        path.AddArc(r.Right - d,       r.Y,               d, d, 270, 90);
+        path.AddArc(r.Right - d,       r.Bottom - d,      d, d,   0, 90);
+        path.AddArc(r.X,               r.Bottom - d,      d, d,  90, 90);
+        path.CloseFigure();
+        g.DrawPath(pen, path);
+    }
+
+    // ── Login logic ───────────────────────────────────────────────────────
     private void DoLogin()
     {
         lblError.Visible = false;
@@ -132,9 +268,8 @@ public class LoginForm : Form
 
         try
         {
-            var hash            = HashPassword(password);
-            var usernameLower   = username.ToLower();
-            // Username: case-insensitive | Password hash: exact match
+            var hash          = HashPassword(password);
+            var usernameLower = username.ToLower();
             var user = _context.Users.FirstOrDefault(u =>
                 u.Username.ToLower() == usernameLower && u.PasswordHash == hash && u.IsActive);
 
@@ -146,13 +281,12 @@ public class LoginForm : Form
                 return;
             }
 
-            // Update last login
             user.LastLoginDate = DateTime.UtcNow;
             _context.SaveChanges();
 
-            LoggedInUser  = user;
-            LoginSuccess  = true;
-            DialogResult  = DialogResult.OK;
+            LoggedInUser = user;
+            LoginSuccess = true;
+            DialogResult = DialogResult.OK;
             Close();
         }
         catch (Exception ex)

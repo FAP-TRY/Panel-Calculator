@@ -89,11 +89,11 @@ public class EstimationHistoryForm : Form
         btnDelete.Click += BtnDelete_Click;
 
         var btnChangeStatus = new Button { Text = "✏ Ubah Status", Location = new Point(286, 10), Width = 140, Height = 36 };
-        AppTheme.StyleButton(btnChangeStatus, Color.FromArgb(107, 114, 128), Color.White);
+        AppTheme.StyleButton(btnChangeStatus, AppTheme.Bg2, AppTheme.Text2);
         btnChangeStatus.Click += BtnChangeStatus_Click;
 
         var btnExport = new Button { Text = "📄 Export PDF", Location = new Point(438, 10), Width = 130, Height = 36 };
-        AppTheme.StyleButton(btnExport, Color.FromArgb(37, 99, 235), Color.White);
+        AppTheme.StyleButton(btnExport, AppTheme.Brand500, Color.White);
         btnExport.Click += BtnExport_Click;
 
         var lblHint = AppTheme.MakeLabel("Klik 2x untuk membuka ke kalkulator.", AppTheme.FontSmall, AppTheme.TextMuted);
@@ -143,15 +143,9 @@ public class EstimationHistoryForm : Form
                 est.EstimationId
             );
 
-            // Color-code status
-            dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = est.Status switch
-            {
-                "Antri Hitung"     => Color.FromArgb(100, 116, 139),  // slate
-                "Selesai Dihitung" => Color.FromArgb(37,  99,  235),  // blue
-                "Menunggu Approve" => Color.FromArgb(217, 119,   6),  // amber
-                "Sudah Diapprove"  => Color.FromArgb(  5, 150, 105),  // emerald
-                _                  => AppTheme.TextSecondary
-            };
+            // Color-code status (dark palette)
+            var (fgColor, _) = AppTheme.GetStatusColor(est.Status);
+            dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = fgColor;
         }
     }
 

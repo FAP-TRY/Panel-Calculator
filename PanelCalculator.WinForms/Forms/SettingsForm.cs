@@ -53,10 +53,10 @@ public class SettingsForm : Form
         BackColor       = AppTheme.Background;
 
         // ── Title ────────────────────────────────────────────────────────
-        var pnlHead = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = Color.White };
+        var pnlHead = new Panel { Dock = DockStyle.Top, Height = 52, BackColor = AppTheme.BgHeader };
         pnlHead.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, pnlHead.Height - 1, pnlHead.Width, pnlHead.Height - 1);
         };
         var lblTitle = AppTheme.MakeLabel("⚙  Pengaturan", AppTheme.FontLarge, AppTheme.TextPrimary);
@@ -83,7 +83,7 @@ public class SettingsForm : Form
         btnImport.Click += BtnImport_Click;
 
         btnSync = new Button { Text = "🔄 Sync Ulang", Location = new Point(220, 46), Width = 140, Height = 34, Enabled = false };
-        AppTheme.StyleButton(btnSync, Color.FromArgb(5, 150, 105), Color.White);
+        AppTheme.StyleButton(btnSync, AppTheme.Success500, Color.White);
         btnSync.Click += BtnSync_Click;
 
         lblLastSync = AppTheme.MakeLabel("Belum ada riwayat import.", AppTheme.FontSmall, AppTheme.TextMuted);
@@ -221,7 +221,7 @@ public class SettingsForm : Form
         btnAddUser.Click += BtnAddUser_Click;
 
         var btnEditUser = new Button { Text = "✏ Edit",          Location = new Point(148, bY), Width = 90,  Height = 32 };
-        AppTheme.StyleButton(btnEditUser, Color.FromArgb(107, 114, 128), Color.White);
+        AppTheme.StyleButton(btnEditUser, AppTheme.Bg2, AppTheme.Text2);
         btnEditUser.Click += (s, e) => EditUser(GetSelectedUser());
 
         var btnToggle = new Button { Text = "🔒 Nonaktifkan",    Location = new Point(246, bY), Width = 130, Height = 32 };
@@ -244,7 +244,7 @@ public class SettingsForm : Form
 
         // ── "Tutup" button — always visible; positioned by ApplyRoleVisibility ──
         _btnClose = new Button { Text = "Tutup", Width = 90, Height = 32 };
-        AppTheme.StyleButton(_btnClose, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(_btnClose, AppTheme.Bg2, AppTheme.Text2);
         _btnClose.Click += (s, e) => Close();
 
         pnlBody.Controls.AddRange(new Control[]
@@ -529,7 +529,7 @@ public class SettingsForm : Form
         AppTheme.StyleButton(btnOK, AppTheme.Primary, Color.White);
 
         var btnCancel = new Button { Text = "Batal", Location = new Point(282, 112), Width = 86, Height = 32, DialogResult = DialogResult.Cancel };
-        AppTheme.StyleButton(btnCancel, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(btnCancel, AppTheme.Bg2, AppTheme.Text2);
 
         f.AcceptButton = btnOK;
         f.CancelButton = btnCancel;

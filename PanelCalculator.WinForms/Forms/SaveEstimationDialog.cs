@@ -80,7 +80,7 @@ public class SaveEstimationDialog : Form
         btnOk.Click += BtnOk_Click;
 
         var btnCancel = new Button { Text = "Batal", Location = new Point(x + 190, y), Width = 180, Height = 36 };
-        AppTheme.StyleButton(btnCancel, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(btnCancel, AppTheme.Bg2, AppTheme.Text2);
         btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
 
         Controls.AddRange(new Control[] { lblTitle, btnOk, btnCancel });

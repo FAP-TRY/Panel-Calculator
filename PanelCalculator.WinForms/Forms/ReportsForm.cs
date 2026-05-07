@@ -62,8 +62,8 @@ public class ReportsForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(8, 0, 0, 0)
         };
-        AppTheme.StyleButton(btn, Color.Transparent, AppTheme.TextPrimary);
-        btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(239, 246, 255);
+        AppTheme.StyleButton(btn, Color.Transparent, AppTheme.Text2);
+        btn.FlatAppearance.MouseOverBackColor = AppTheme.Bg2;
         return btn;
     }
 
@@ -171,7 +171,7 @@ public class ReportsForm : Form
         {
             Width = 175, Height = 90,
             Margin = new Padding(0, 0, 12, 0),
-            BackColor = Color.White
+            BackColor = AppTheme.BgElev
         };
         var lbl = new Label
         {

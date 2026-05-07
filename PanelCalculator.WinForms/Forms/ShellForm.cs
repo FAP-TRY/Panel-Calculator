@@ -53,11 +53,11 @@ public class ShellForm : Form
         {
             Dock      = DockStyle.Top,
             Height    = 48,
-            BackColor = AppTheme.Primary
+            BackColor = AppTheme.BgHeader
         };
         pnlTopBar.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(29, 78, 216));
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, pnlTopBar.Height - 1, pnlTopBar.Width, pnlTopBar.Height - 1);
         };
 
@@ -86,7 +86,7 @@ public class ShellForm : Form
         {
             Text      = "",     // set on Load
             Font      = AppTheme.FontBase,
-            ForeColor = Color.FromArgb(190, 215, 255),
+            ForeColor = AppTheme.Text2,
             AutoSize  = false,
             TextAlign = ContentAlignment.MiddleRight,
             Padding   = new Padding(0, 0, 8, 0)
@@ -99,14 +99,14 @@ public class ShellForm : Form
             Width     = 110,
             Height    = 30,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(55, 65, 81),
-            ForeColor = Color.White,
+            BackColor = AppTheme.Bg2,
+            ForeColor = AppTheme.Text2,
             Font      = AppTheme.FontSmall,
             Cursor    = Cursors.Hand,
             Visible   = false   // shown on Load if Admin
         };
         btnUsers.FlatAppearance.BorderSize = 0;
-        btnUsers.FlatAppearance.MouseOverBackColor = Color.FromArgb(75, 85, 99);
+        btnUsers.FlatAppearance.MouseOverBackColor = AppTheme.Bg3;
         btnUsers.Click += BtnUsers_Click;
 
         // Logout button
@@ -116,13 +116,13 @@ public class ShellForm : Form
             Width     = 100,
             Height    = 30,
             FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(55, 65, 81),
-            ForeColor = Color.White,
+            BackColor = AppTheme.Bg2,
+            ForeColor = AppTheme.Text2,
             Font      = AppTheme.FontSmall,
             Cursor    = Cursors.Hand
         };
         btnLogout.FlatAppearance.BorderSize = 0;
-        btnLogout.FlatAppearance.MouseOverBackColor = Color.FromArgb(220, 38, 38);  // red on hover
+        btnLogout.FlatAppearance.MouseOverBackColor = AppTheme.Danger500;  // red on hover
         btnLogout.Click += BtnLogout_Click;
 
         // position buttons

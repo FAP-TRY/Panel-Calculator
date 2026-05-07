@@ -58,11 +58,11 @@ public class DashboardForm : Form
         {
             Dock      = DockStyle.Top,
             Height    = 56,
-            BackColor = Color.White
+            BackColor = AppTheme.BgHeader
         };
         pnlTop.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawLine(pen, 0, pnlTop.Height - 1, pnlTop.Width, pnlTop.Height - 1);
         };
 
@@ -80,7 +80,7 @@ public class DashboardForm : Form
         lblSummary.Padding   = new Padding(0, 0, 16, 0);
 
         var btnRefresh = new Button { Text = "🔄 Refresh", Width = 100, Height = 30, Dock = DockStyle.Right };
-        AppTheme.StyleButton(btnRefresh, Color.FromArgb(55, 65, 81), Color.White);
+        AppTheme.StyleButton(btnRefresh, AppTheme.Bg2, AppTheme.Text2);
         btnRefresh.Click += (s, e) => LoadData();
 
         pnlTop.Controls.Add(lblSummary);
@@ -92,7 +92,7 @@ public class DashboardForm : Form
         {
             Dock        = DockStyle.Fill,
             AutoScroll  = true,
-            BackColor   = Color.FromArgb(241, 245, 249),  // slate-100
+            BackColor   = AppTheme.Bg0,
             Padding     = new Padding(16, 16, 16, 16)
         };
 
@@ -124,15 +124,15 @@ public class DashboardForm : Form
         {
             Top       = 0,
             Width     = totalW,
-            BackColor = Color.White,
+            BackColor = AppTheme.Bg1,
             Padding   = new Padding(ColPadding)
         };
         col.Paint += (s, e) =>
         {
-            using var pen = new Pen(AppTheme.Border);
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawRectangle(pen, 0, 0, col.Width - 1, col.Height - 1);
             using var brush = new SolidBrush(stage.Accent);
-            e.Graphics.FillRectangle(brush, 0, 0, col.Width, 4);
+            e.Graphics.FillRectangle(brush, 0, 0, col.Width, 3);
         };
 
         // Header
@@ -290,14 +290,14 @@ public class DashboardForm : Form
         {
             Width     = CardWidth,
             Height    = 120,
-            BackColor = Color.White,
+            BackColor = AppTheme.BgElev,
             Margin    = new Padding(0, 0, 0, 8),
             Cursor    = Cursors.Hand,
             Tag       = est
         };
         card.Paint += (s, e) =>
         {
-            using var pen = new Pen(Color.FromArgb(226, 232, 240));  // border subtle
+            using var pen = new Pen(AppTheme.Border2);
             e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
             using var brush = new SolidBrush(accent);
             e.Graphics.FillRectangle(brush, 0, 0, 3, card.Height);
@@ -401,8 +401,8 @@ public class DashboardForm : Form
             Height    = 22,
             Font      = new Font("Segoe UI", 7.5f),
             FlatStyle = FlatStyle.Flat,
-            BackColor = isLast ? Color.FromArgb(229, 231, 235) : Color.FromArgb(16, 185, 129),
-            ForeColor = isLast ? AppTheme.TextMuted : Color.White,
+            BackColor = isLast ? AppTheme.Bg2 : AppTheme.Success500,
+            ForeColor = isLast ? AppTheme.Text3 : Color.White,
             Cursor    = isLast ? Cursors.Default : Cursors.Hand,
             Enabled   = !isLast
         };
@@ -575,7 +575,7 @@ public class AddQueueDialog : Form
             Location  = new Point(20, 204),
             AutoSize  = true,
             Font      = AppTheme.FontSmall,
-            ForeColor = AppTheme.TextSecondary
+            ForeColor = AppTheme.Text2
         };
         _dtpOrder = new DateTimePicker
         {
@@ -607,7 +607,7 @@ public class AddQueueDialog : Form
         };
 
         var btnCancel = new Button { Text = "Batal", Location = new Point(182, 244), Width = 90, Height = 36 };
-        AppTheme.StyleButton(btnCancel, Color.FromArgb(229, 231, 235), AppTheme.TextPrimary);
+        AppTheme.StyleButton(btnCancel, AppTheme.Bg2, AppTheme.Text2);
         btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
 
         Controls.AddRange(new Control[]
