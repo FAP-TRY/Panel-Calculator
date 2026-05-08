@@ -154,16 +154,14 @@ public partial class MainForm : Form
         btnDashboard = MakeToolbarButton("🏠 Dashboard",     AppTheme.Bg2,      120);
         btnNew      = MakeToolbarButton("＋ Estimasi Baru", AppTheme.Brand500, 140);
         btnHistory  = MakeToolbarButton("📋 Riwayat",       AppTheme.Bg2,      110);
-        btnReports  = MakeToolbarButton("📊 Laporan",       AppTheme.Bg2,      110);
         btnSettings = MakeToolbarButton("⚙ Settings",       AppTheme.Bg2,      110);
 
         btnDashboard.Click += BtnDashboard_Click;
         btnNew.Click      += BtnNew_Click;
         btnHistory.Click  += BtnHistory_Click;
-        btnReports.Click  += BtnReports_Click;
         btnSettings.Click += BtnSettings_Click;
 
-        btnFlow.Controls.AddRange(new Control[] { btnDashboard, btnNew, btnHistory, btnReports, btnSettings });
+        btnFlow.Controls.AddRange(new Control[] { btnDashboard, btnNew, btnHistory, btnSettings });
         btnAreaPanel.Controls.Add(btnFlow);
 
         // Right-align the flow panel whenever the container resizes
