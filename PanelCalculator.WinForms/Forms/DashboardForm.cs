@@ -22,13 +22,11 @@ public class DashboardForm : Form
         ("Approved", "Approved", "✅", Color.FromArgb(  5, 150, 105)),  // emerald
     };
 
-    private const int CardWidth   = 230;
-    private const int ColPadding  = 12;
-    private const int ColGap      = 10;
+    private const int ColPadding  = 10;
 
-    // One FlowLayoutPanel per column (holds cards)
-    private readonly FlowLayoutPanel[] _colFlows = new FlowLayoutPanel[Stages.Length];
-    private readonly Label[]           _colCount = new Label[Stages.Length];
+    // One Panel per column (holds cards, Dock=Top stacking)
+    private readonly Panel[] _colFlows = new Panel[Stages.Length];
+    private readonly Label[] _colCount = new Label[Stages.Length];
 
     // Action requested by caller (open estimation)
     public Estimation? SelectedEstimation { get; private set; }
@@ -85,27 +83,27 @@ public class DashboardForm : Form
         pnlTop.Controls.Add(btnRefresh);
         pnlTop.Controls.Add(lblTitle);
 
-        // ── Horizontal scroll area ────────────────────────────────────────
-        var scrollPanel = new Panel
+        // ── Kanban columns: TableLayoutPanel fills the whole window ──────
+        var tblCols = new TableLayoutPanel
         {
             Dock        = DockStyle.Fill,
-            AutoScroll  = true,
+            ColumnCount = Stages.Length,
+            RowCount    = 1,
             BackColor   = AppTheme.Bg0,
-            Padding     = new Padding(16, 16, 16, 16)
+            Padding     = new Padding(8, 8, 8, 8),
+            CellBorderStyle = TableLayoutPanelCellBorderStyle.None
         };
+        tblCols.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        for (int i = 0; i < Stages.Length; i++)
+            tblCols.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / Stages.Length));
 
-        // Build columns
-        int colX = 0;
         for (int i = 0; i < Stages.Length; i++)
         {
             var col = BuildColumn(i, Stages[i]);
-            col.Left = colX;
-            scrollPanel.Controls.Add(col);
-            colX += CardWidth + ColGap + ColPadding * 2;
+            tblCols.Controls.Add(col, i, 0);
         }
-        scrollPanel.AutoScrollMinSize = new Size(colX, 0);
 
-        Controls.Add(scrollPanel);
+        Controls.Add(tblCols);
         Controls.Add(pnlTop);
 
         Load += (s, e) => LoadData();
@@ -116,14 +114,12 @@ public class DashboardForm : Form
     // ════════════════════════════════════════════════════════════════════
     private Panel BuildColumn(int idx, (string Status, string Title, string Icon, Color Accent) stage)
     {
-        int totalW = CardWidth + ColPadding * 2;
-
         var col = new Panel
         {
-            Top       = 0,
-            Width     = totalW,
+            Dock      = DockStyle.Fill,
             BackColor = AppTheme.Bg1,
-            Padding   = new Padding(ColPadding)
+            Padding   = new Padding(ColPadding),
+            Margin    = new Padding(idx == 0 ? 0 : 6, 0, 0, 0)
         };
         col.Paint += (s, e) =>
         {
@@ -133,82 +129,61 @@ public class DashboardForm : Form
             e.Graphics.FillRectangle(brush, 0, 0, col.Width, 3);
         };
 
-        // Header
-        var pnlHeader = new Panel
-        {
-            Dock      = DockStyle.Top,
-            Height    = 54,
-            BackColor = Color.Transparent
-        };
+        // ── Header ────────────────────────────────────────────────────────
+        var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = Color.Transparent };
 
         var lblIcon = new Label
         {
-            Text      = stage.Icon,
-            Font      = new Font("Segoe UI Emoji", 16f),
-            Location  = new Point(0, 8),
-            AutoSize  = true,
-            ForeColor = stage.Accent
+            Text = stage.Icon, Font = new Font("Segoe UI Emoji", 16f),
+            Location = new Point(0, 8), AutoSize = true, ForeColor = stage.Accent
         };
-
         var lblColTitle = new Label
         {
-            Text      = stage.Title,
-            Font      = AppTheme.FontBold,
-            ForeColor = AppTheme.TextPrimary,
-            Location  = new Point(30, 4),
-            AutoSize  = false,
-            Width     = CardWidth - 50,
-            Height    = 22
+            Text = stage.Title, Font = AppTheme.FontBold, ForeColor = AppTheme.TextPrimary,
+            Location = new Point(30, 4), AutoSize = false, Width = 200, Height = 22
         };
-
         _colCount[idx] = new Label
         {
-            Text      = "0",
-            Font      = AppTheme.FontSmall,
-            ForeColor = AppTheme.TextMuted,
-            Location  = new Point(30, 26),
-            AutoSize  = true
+            Text = "0", Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted,
+            Location = new Point(30, 26), AutoSize = true
         };
 
-        // "＋ Tambah" button only on the Draft column (idx == 0)
         var headerControls = new List<Control> { lblIcon, lblColTitle, _colCount[idx] };
+
+        // "＋ Tambah" button — right-aligned using Anchor
         if (idx == 0)
         {
             var btnAdd = new Button
             {
                 Text      = "＋ Tambah",
-                Location  = new Point(CardWidth - 72, 14),
-                Width     = 70,
-                Height    = 24,
-                Font      = new Font("Segoe UI", 7.5f),
+                Anchor    = AnchorStyles.Top | AnchorStyles.Right,
+                Width     = 80, Height    = 26,
+                Font      = new Font("Segoe UI", 8f),
                 FlatStyle = FlatStyle.Flat,
-                BackColor = stage.Accent,
-                ForeColor = Color.White,
+                BackColor = stage.Accent, ForeColor = Color.White,
                 Cursor    = Cursors.Hand
             };
+            // position on Layout so it sticks to right edge of header
+            pnlHeader.Layout += (s, e) =>
+                btnAdd.Location = new Point(pnlHeader.Width - btnAdd.Width - 4, 14);
             btnAdd.FlatAppearance.BorderSize = 0;
             btnAdd.Click += (s, e) => OpenAddQueueDialog();
             headerControls.Add(btnAdd);
         }
         pnlHeader.Controls.AddRange(headerControls.ToArray());
 
-        // Scrollable card flow
-        _colFlows[idx] = new FlowLayoutPanel
+        // ── Scrollable card area ──────────────────────────────────────────
+        // Uses a plain Panel with Dock=Top cards; AutoScroll handles overflow.
+        _colFlows[idx] = new Panel
         {
-            Dock          = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents  = false,
-            AutoScroll    = true,
-            BackColor     = Color.Transparent,
-            Padding       = new Padding(0, 4, 0, 4)
+            Dock       = DockStyle.Fill,
+            AutoScroll = true,
+            BackColor  = Color.Transparent,
+            Padding    = new Padding(0, 4, 0, 4)
         };
 
         col.Controls.Add(_colFlows[idx]);
         col.Controls.Add(pnlHeader);
-
-        // Height fills parent
-        col.Anchor = AnchorStyles.Top | AnchorStyles.Bottom;
-
         return col;
     }
 
@@ -252,29 +227,11 @@ public class DashboardForm : Form
                 _colCount[i].Text = cnt == 0 ? "Kosong" : $"{cnt} estimasi";
             }
 
-            // Fix column heights to stretch
-            FixColumnHeights();
         }
         catch (Exception ex)
         {
             lblSummary.Text = "Gagal memuat: " + ex.Message;
         }
-    }
-
-    private void FixColumnHeights()
-    {
-        // Make all columns fill the scroll panel height
-        var scroll = Controls.OfType<Panel>().FirstOrDefault(p => p.AutoScroll);
-        if (scroll == null) return;
-        int h = Math.Max(scroll.ClientSize.Height - 32, 400);
-        foreach (Panel col in scroll.Controls)
-            col.Height = h;
-    }
-
-    protected override void OnResize(EventArgs e)
-    {
-        base.OnResize(e);
-        FixColumnHeights();
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -284,21 +241,22 @@ public class DashboardForm : Form
     {
         var accent = Stages[colIdx].Accent;
 
+        // Dock=Top so the card stretches to full column width automatically.
+        // Height 128 = 120 content + 8 invisible bottom gap.
         var card = new Panel
         {
-            Width     = CardWidth,
-            Height    = 120,
+            Dock      = DockStyle.Top,
+            Height    = 128,
             BackColor = AppTheme.BgElev,
-            Margin    = new Padding(0, 0, 0, 8),
             Cursor    = Cursors.Hand,
             Tag       = est
         };
         card.Paint += (s, e) =>
         {
             using var pen = new Pen(AppTheme.Border2);
-            e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
+            e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 9);  // leave gap visible
             using var brush = new SolidBrush(accent);
-            e.Graphics.FillRectangle(brush, 0, 0, 3, card.Height);
+            e.Graphics.FillRectangle(brush, 0, 0, 3, card.Height - 9);
         };
 
         // EST number
@@ -311,7 +269,7 @@ public class DashboardForm : Form
             AutoSize  = true
         };
 
-        // Client name (bold)
+        // Client name (bold) – stretches with card width
         var lblClient = new Label
         {
             Text      = est.ClientName,
@@ -319,7 +277,8 @@ public class DashboardForm : Form
             ForeColor = AppTheme.TextPrimary,
             Location  = new Point(10, 22),
             AutoSize  = false,
-            Width     = CardWidth - 16,
+            Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Width     = 300,
             Height    = 18
         };
 
@@ -331,7 +290,8 @@ public class DashboardForm : Form
             ForeColor = AppTheme.TextSecondary,
             Location  = new Point(10, 40),
             AutoSize  = false,
-            Width     = CardWidth - 16,
+            Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Width     = 300,
             Height    = 15
         };
 
@@ -343,7 +303,8 @@ public class DashboardForm : Form
             ForeColor = AppTheme.TextMuted,
             Location  = new Point(10, 55),
             AutoSize  = false,
-            Width     = CardWidth - 16,
+            Anchor    = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Width     = 300,
             Height    = 15
         };
 
@@ -367,15 +328,12 @@ public class DashboardForm : Form
             AutoSize  = true
         };
 
-        // ── Action buttons ────────────────────────────────────────────
-        // "Buka" button
+        // ── Action buttons (right-aligned via Layout event) ────────────
         var btnBuka = new Button
         {
-            Text     = "Buka",
-            Location = new Point(CardWidth - 110, 92),
-            Width    = 50,
-            Height   = 22,
-            Font     = new Font("Segoe UI", 7.5f),
+            Text      = "Buka",
+            Width     = 50, Height = 22,
+            Font      = new Font("Segoe UI", 7.5f),
             FlatStyle = FlatStyle.Flat,
             BackColor = AppTheme.Primary,
             ForeColor = Color.White,
@@ -389,14 +347,11 @@ public class DashboardForm : Form
             Close();
         };
 
-        // "→ Maju" button (move to next stage)
         bool isLast = colIdx >= Stages.Length - 1;
         var btnMaju = new Button
         {
             Text      = isLast ? "—" : "→ Maju",
-            Location  = new Point(CardWidth - 57, 92),
-            Width     = 55,
-            Height    = 22,
+            Width     = 55, Height = 22,
             Font      = new Font("Segoe UI", 7.5f),
             FlatStyle = FlatStyle.Flat,
             BackColor = isLast ? AppTheme.Bg2 : AppTheme.Success500,
@@ -411,6 +366,13 @@ public class DashboardForm : Form
             string nextSts = Stages[nextIdx].Status;
             btnMaju.Click += (s, e) => MoveToStage(est, nextSts);
         }
+
+        // Keep buttons pinned to bottom-right as card width changes
+        card.Layout += (s, e) =>
+        {
+            btnBuka.Location = new Point(card.Width - 116, 90);
+            btnMaju.Location = new Point(card.Width -  61, 90);
+        };
 
         card.Controls.AddRange(new Control[]
         {
