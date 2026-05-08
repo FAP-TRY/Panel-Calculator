@@ -346,7 +346,7 @@ public static class PdfLetterExport
 
     private static Cell NB(string text, PdfFont font, float size, DeviceRgb color)
         => new Cell().SetBorder(Border.NO_BORDER)
-            .SetPaddingTop(1).SetPaddingBottom(1)
+            .SetPadding(0).SetPaddingTop(2).SetPaddingBottom(2)   // zero horizontal — avoids double-gap around ':'
             .Add(P(text, font, size, color));
 
     private static Cell DC(string text, PdfFont font, float size, DeviceRgb bg,
@@ -371,8 +371,11 @@ public static class PdfLetterExport
 
     private static void AddRef(Table tbl, string label, string value, PdfFont reg, PdfFont bold)
     {
+        // Label left-aligned → unused column width = natural gap before ':'
         tbl.AddCell(NB(label, bold, 10, ColorDark));
-        tbl.AddCell(NB(":",   reg,  10, ColorDark));
+        // ':' flush to label, 4 pt right padding = one space after ':'
+        tbl.AddCell(NB(":",   reg,  10, ColorDark).SetPaddingRight(4));
+        // Value starts right after the one-space gap
         tbl.AddCell(NB(value, reg,  10, ColorDark));
     }
 
