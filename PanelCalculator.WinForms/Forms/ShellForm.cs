@@ -2,6 +2,7 @@ using PanelCalculator.Core.Models;
 using PanelCalculator.Core.Services;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
+using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
 
 namespace PanelCalculator.WinForms.Forms;
@@ -25,6 +26,7 @@ public class ShellForm : Form
 
     private Panel    pnlContent  = null!;
     private MainForm? _calcForm  = null;
+    private Button   _btnUpdate  = null!;   // update-available notification
 
     public ShellForm(
         PanelCalculatorContext    context,
@@ -125,20 +127,64 @@ public class ShellForm : Form
         btnLogout.FlatAppearance.MouseOverBackColor = AppTheme.Danger500;  // red on hover
         btnLogout.Click += BtnLogout_Click;
 
-        // position buttons
+        // Update-available notification button (hidden until an update is found)
+        _btnUpdate = new Button
+        {
+            Text      = "",
+            Width     = 0,   // invisible until needed
+            Height    = 30,
+            Visible   = false,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppTheme.Success500,
+            ForeColor = Color.White,
+            Font      = AppTheme.FontSmall,
+            Cursor    = Cursors.Hand
+        };
+        _btnUpdate.FlatAppearance.BorderSize = 0;
+        _btnUpdate.FlatAppearance.MouseOverBackColor = AppTheme.Success400;
+        _btnUpdate.Click += BtnUpdate_Click;
+
+        // Version label (shows current version on hover area)
+        var lblVersion = new Label
+        {
+            Text      = $"v{UpdateService.AppVersion}",
+            Font      = AppTheme.FontSmall,
+            ForeColor = AppTheme.Text3,
+            AutoSize  = false,
+            TextAlign = ContentAlignment.MiddleRight,
+            Width     = 56
+        };
+
+        // Position: logout → users → update → version → userinfo
         pnlRight.Layout += (s, e) =>
         {
             int cx = pnlRight.Width - 8;
+
             btnLogout.Top  = (pnlRight.Height - btnLogout.Height) / 2;
             btnLogout.Left = cx - btnLogout.Width;
 
             btnUsers.Top  = (pnlRight.Height - btnUsers.Height) / 2;
             btnUsers.Left = btnLogout.Left - btnUsers.Width - 6;
 
-            lblUserInfo.SetBounds(0, 0, btnUsers.Left - 4, pnlRight.Height);
+            if (_btnUpdate.Visible)
+            {
+                _btnUpdate.Top  = (pnlRight.Height - _btnUpdate.Height) / 2;
+                _btnUpdate.Left = btnUsers.Left - _btnUpdate.Width - 6;
+                lblVersion.SetBounds(_btnUpdate.Left - lblVersion.Width - 4, 0,
+                    lblVersion.Width, pnlRight.Height);
+            }
+            else
+            {
+                lblVersion.SetBounds(btnUsers.Left - lblVersion.Width - 4, 0,
+                    lblVersion.Width, pnlRight.Height);
+            }
+
+            lblUserInfo.SetBounds(0, 0,
+                Math.Max(4, lblVersion.Left - 4), pnlRight.Height);
         };
 
-        pnlRight.Controls.AddRange(new Control[] { lblUserInfo, btnUsers, btnLogout });
+        pnlRight.Controls.AddRange(new Control[]
+            { lblUserInfo, lblVersion, btnUsers, _btnUpdate, btnLogout });
 
         pnlTopBar.Controls.Add(pnlRight);
         pnlTopBar.Controls.Add(lblAppTitle);
@@ -151,9 +197,12 @@ public class ShellForm : Form
 
         Load += (s, e) =>
         {
-            lblUserInfo.Text    = $"{CurrentUser.FullName}  ({CurrentUser.Role})";
-            btnUsers.Visible    = CurrentUser.Role == "Admin";
+            lblUserInfo.Text = $"{CurrentUser.FullName}  ({CurrentUser.Role})";
+            btnUsers.Visible = CurrentUser.Role == "Admin";
             ShowCalcForm();
+
+            // Background update check — never blocks the UI
+            _ = CheckForUpdateAsync();
         };
     }
 
@@ -196,6 +245,96 @@ public class ShellForm : Form
         {
             WantsRelogin = true;
             Close();
+        }
+    }
+
+    // ── Auto-update ───────────────────────────────────────────────────────
+
+    private UpdateService.ReleaseInfo? _pendingUpdate;
+
+    private async Task CheckForUpdateAsync()
+    {
+        try
+        {
+            var info = await UpdateService.CheckAsync();
+            if (info == null) return;
+
+            _pendingUpdate = info;
+
+            // Show notification on UI thread
+            if (IsHandleCreated)
+                Invoke(() =>
+                {
+                    _btnUpdate.Text    = $"🔄 Update v{info.Version}";
+                    _btnUpdate.Width   = 130;
+                    _btnUpdate.Visible = true;
+                    _btnUpdate.Parent?.PerformLayout();
+                });
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private async void BtnUpdate_Click(object? sender, EventArgs e)
+    {
+        if (_pendingUpdate == null) return;
+
+        var confirm = MessageBox.Show(
+            $"Pembaruan  v{_pendingUpdate.Version}  tersedia!\n\n" +
+            $"Aplikasi akan didownload, ditutup, dan diperbarui secara otomatis.\n" +
+            $"Data di database Anda tidak akan terpengaruh.\n\n" +
+            $"Lanjutkan update sekarang?",
+            "Update Tersedia",
+            MessageBoxButtons.YesNo, MessageBoxIcon.Information,
+            MessageBoxDefaultButton.Button1);
+
+        if (confirm != DialogResult.Yes) return;
+
+        // Progress dialog
+        using var prog = new Form
+        {
+            Text            = "Mengunduh Pembaruan...",
+            Size            = new Size(420, 140),
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition   = FormStartPosition.CenterParent,
+            MaximizeBox     = false, MinimizeBox = false,
+            BackColor       = AppTheme.Background
+        };
+        var bar = new ProgressBar { Dock = DockStyle.Top, Height = 24, Minimum = 0, Maximum = 100 };
+        var lbl = new Label
+        {
+            Text      = "Memulai download...",
+            Dock      = DockStyle.Fill,
+            Font      = AppTheme.FontBase,
+            ForeColor = AppTheme.Text2,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        prog.Controls.Add(lbl);
+        prog.Controls.Add(bar);
+        prog.Show(this);
+
+        var progress = new Progress<(int Percent, string Status)>(p =>
+        {
+            if (!prog.IsDisposed)
+            {
+                bar.Value  = Math.Clamp(p.Percent, 0, 100);
+                lbl.Text   = p.Status;
+                Application.DoEvents();
+            }
+        });
+
+        try
+        {
+            _btnUpdate.Enabled = false;
+            await UpdateService.DownloadAndApplyAsync(_pendingUpdate, progress);
+            // App will exit from within DownloadAndApplyAsync → this line never reached
+        }
+        catch (Exception ex)
+        {
+            prog.Close();
+            _btnUpdate.Enabled = true;
+            MessageBox.Show(
+                $"Download gagal:\n{ex.Message}\n\nSilakan download manual dari:\n{_pendingUpdate.HtmlUrl}",
+                "Update Gagal", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

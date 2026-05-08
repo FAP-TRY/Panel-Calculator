@@ -26,6 +26,13 @@ public partial class MainForm : Form
     private decimal _pphPercent    = 0m;    // PPh
     private bool    _refreshing    = false; // re-entrancy guard
 
+    /// <summary>Sections explicitly added by the user via "Tambah Grup".</summary>
+    private readonly List<string> _activeSections = new();
+
+    // ── Drag-from-product-list state ──────────────────────────────────────
+    private Point _dragStartPoint;
+    private bool  _isDraggingProduct;
+
     private static readonly string[] Sections =
     {
         "Material Utama", "Material Pendukung", "Material Lainnya",
@@ -326,6 +333,8 @@ public partial class MainForm : Form
 
         dgvProducts.CellDoubleClick += DgvProducts_CellDoubleClick;
         dgvProducts.CellFormatting  += DgvProducts_CellFormatting;
+        dgvProducts.MouseDown       += DgvProducts_MouseDown;
+        dgvProducts.MouseMove       += DgvProducts_MouseMove;
 
         // Remove sort arrows from column headers
         foreach (DataGridViewColumn col in dgvProducts.Columns)
@@ -394,7 +403,7 @@ public partial class MainForm : Form
             };
         };
 
-        // ── "+" Add button ────────────────────────────────────────────────
+        // ── "+" Add-product button ────────────────────────────────────────
         var btnAddToSection = new Button
         {
             Text      = "+",
@@ -411,10 +420,29 @@ public partial class MainForm : Form
         btnAddToSection.FlatAppearance.MouseOverBackColor = AppTheme.Brand600;
         btnAddToSection.Click += BtnAddToSection_Click;
 
-        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection, btnAddToSection });
+        // ── "Tambah Grup" button ──────────────────────────────────────────
+        var btnTambahGrup = new Button
+        {
+            Text      = "＋ Tambah Grup",
+            Location  = new Point(433, 4),
+            Width     = 115,
+            Height    = 26,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppTheme.Success500,
+            ForeColor = Color.White,
+            Font      = AppTheme.FontSmall,
+            Cursor    = Cursors.Hand,
+        };
+        btnTambahGrup.FlatAppearance.BorderSize = 0;
+        btnTambahGrup.FlatAppearance.MouseOverBackColor = AppTheme.Success400;
+        btnTambahGrup.Click += BtnTambahGrup_Click;
 
-        dgvItems = new DataGridView { Dock = DockStyle.Fill };
+        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection, btnAddToSection, btnTambahGrup });
+
+        dgvItems = new DataGridView { Dock = DockStyle.Fill, AllowDrop = true };
         AppTheme.StyleGrid(dgvItems);
+        dgvItems.DragEnter += DgvItems_DragEnter;
+        dgvItems.DragDrop  += DgvItems_DragDrop;
 
         // ── Columns ───────────────────────────────────────────────────────
         dgvItems.Columns.Add(new DataGridViewTextBoxColumn
@@ -1059,6 +1087,66 @@ public partial class MainForm : Form
         }
     }
 
+    // ── Tambah Grup ───────────────────────────────────────────────────────
+
+    private void BtnTambahGrup_Click(object? sender, EventArgs e)
+    {
+        var section = cmbTargetSection.SelectedItem?.ToString();
+        if (string.IsNullOrEmpty(section)) return;
+
+        if (_activeSections.Contains(section))
+        {
+            SetStatus($"Grup '{section}' sudah ada. Pilih produk lalu klik [+] atau klik 2×.");
+            return;
+        }
+
+        _activeSections.Add(section);
+        RefreshItemsGrid();
+        SetStatus($"Grup '{section}' ditambahkan.  Klik 2× produk atau seret ke grid untuk mengisi.");
+    }
+
+    // ── Drag from product list ────────────────────────────────────────────
+
+    private void DgvProducts_MouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left)
+        {
+            _dragStartPoint    = e.Location;
+            _isDraggingProduct = false;
+        }
+    }
+
+    private void DgvProducts_MouseMove(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _isDraggingProduct) return;
+        var dx = Math.Abs(e.X - _dragStartPoint.X);
+        var dy = Math.Abs(e.Y - _dragStartPoint.Y);
+        if (dx < SystemInformation.DragSize.Width && dy < SystemInformation.DragSize.Height) return;
+
+        var hit = dgvProducts.HitTest(_dragStartPoint.X, _dragStartPoint.Y);
+        if (hit.RowIndex < 0) return;
+
+        _isDraggingProduct = true;
+        dgvProducts.DoDragDrop(hit.RowIndex, DragDropEffects.Copy);
+        _isDraggingProduct = false;
+    }
+
+    private void DgvItems_DragEnter(object? sender, DragEventArgs e)
+    {
+        e.Effect = e.Data?.GetDataPresent(typeof(int)) == true
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    private void DgvItems_DragDrop(object? sender, DragEventArgs e)
+    {
+        if (e.Data?.GetData(typeof(int)) is not int rowIdx) return;
+        if (rowIdx < 0 || rowIdx >= dgvProducts.Rows.Count) return;
+        AddProductRowToEstimation(dgvProducts.Rows[rowIdx]);
+    }
+
+    // ── Tombol "+" ────────────────────────────────────────────────────────
+
     /// <summary>Tombol "+" — tambah produk yang sedang dipilih di daftar kiri ke section aktif.</summary>
     private void BtnAddToSection_Click(object? sender, EventArgs e)
     {
@@ -1245,6 +1333,7 @@ public partial class MainForm : Form
             if (result != DialogResult.Yes) return;
         }
         _currentItems.Clear();
+        _activeSections.Clear();
         _shippingCost = 0m;
         _shippingNote = "";
         if (lblShippingNote != null) lblShippingNote.Text = "Belum dihitung";
@@ -1497,16 +1586,18 @@ public partial class MainForm : Form
         _refreshing = true;
         dgvItems.Rows.Clear();
 
-        foreach (var section in Sections)
+        // Only render sections that were explicitly added by user OR already have items
+        var sectionsToRender = Sections
+            .Where(s => _activeSections.Contains(s) || _currentItems.Any(i => i.Section == s))
+            .ToList();
+
+        foreach (var section in sectionsToRender)
         {
             // Items belonging to this section (with their original list index)
             var sectionItems = _currentItems
                 .Select((item, idx) => (item, idx))
                 .Where(x => x.item.Section == section)
                 .ToList();
-
-            // ── Skip sections that have no items ──────────────────────────
-            if (sectionItems.Count == 0) continue;
 
             var hdrBg    = SectionHeaderColor(section);
             var rowBg    = SectionRowColor(section);
@@ -1524,6 +1615,23 @@ public partial class MainForm : Form
             hRow.DefaultCellStyle.Font      = AppTheme.FontBold;
             hRow.ReadOnly = true;
             hRow.Tag      = -1; // sentinel: not an item row
+
+            // ── Placeholder for empty (but active) section ───────────────
+            if (sectionItems.Count == 0)
+            {
+                int pIdx = dgvItems.Rows.Add("", "  ← klik 2×  produk  atau  seret ke sini",
+                    "", "", "", "", "", "", "", "");
+                var pRow = dgvItems.Rows[pIdx];
+                pRow.ReadOnly = true;
+                pRow.DefaultCellStyle.BackColor = SectionRowColor(section);
+                pRow.DefaultCellStyle.ForeColor = Color.FromArgb(
+                    SectionHeaderForeColor(section).R / 2,
+                    SectionHeaderForeColor(section).G / 2,
+                    SectionHeaderForeColor(section).B / 2);
+                pRow.DefaultCellStyle.Font = new Font("Segoe UI", 8f, FontStyle.Italic);
+                pRow.Tag = -1;
+                continue;
+            }
 
             // ── Item rows ─────────────────────────────────────────────────
             foreach (var (item, itemIdx) in sectionItems)
@@ -1592,6 +1700,12 @@ public partial class MainForm : Form
     private void LoadEstimationIntoCalculator(Estimation est)
     {
         _currentItems.Clear();
+        _activeSections.Clear();
+        // Restore active sections from loaded items so the grid groups are preserved
+        _activeSections.AddRange(est.Details
+            .Select(d => string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section)
+            .Distinct()
+            .OrderBy(s => Array.IndexOf(Sections, s)));
         foreach (var d in est.Details)
         {
             _currentItems.Add(new EstimationLineItem
