@@ -2,6 +2,7 @@ using ClosedXML.Excel;
 using PanelCalculator.Core.Models;
 using PanelCalculator.Data;
 using PanelCalculator.Data.DataSeeding;
+using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
 using System.Security.Cryptography;
 using System.Text;
@@ -20,8 +21,11 @@ public class SettingsForm : Form
     private string       _lastImportPath  = "";
 
     // Role-visibility
-    private Panel  _pnlUserSection = null!;
-    private Button _btnClose       = null!;
+    private Panel  _pnlUserSection  = null!;
+    private Button _btnClose        = null!;
+
+    // Update section
+    private Label  _lblUpdateResult = null!;
 
     /// <summary>Set by the caller (MainForm) before ShowDialog so the form
     /// can hide the user-management section for non-Admin users.</summary>
@@ -96,11 +100,40 @@ public class SettingsForm : Form
         var sep = new Panel { Location = new Point(20, 140), Height = 1, Width = 640, BackColor = AppTheme.Border };
 
         // ─────────────────────────────────────────────────────────────────
-        //  SECTION 2: Manajemen Pengguna (Admin only — hidden for Operators)
+        //  SECTION 2: Tentang Aplikasi & Pembaruan
+        // ─────────────────────────────────────────────────────────────────
+        var lblUpdateTitle = AppTheme.MakeLabel("🔄  Tentang Aplikasi & Pembaruan", AppTheme.FontBold, AppTheme.TextPrimary);
+        lblUpdateTitle.Location = new Point(20, 152);
+        lblUpdateTitle.AutoSize = true;
+
+        var lblCurrentVersion = AppTheme.MakeLabel(
+            $"Versi aplikasi saat ini:  v{UpdateService.AppVersion}",
+            AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblCurrentVersion.Location = new Point(20, 174);
+        lblCurrentVersion.AutoSize = true;
+
+        var btnCheckUpdate = new Button
+        {
+            Text     = "🔍 Cek Update",
+            Location = new Point(20, 198),
+            Width    = 140,
+            Height   = 32
+        };
+        AppTheme.StyleButton(btnCheckUpdate, AppTheme.Primary, Color.White);
+        btnCheckUpdate.Click += BtnCheckUpdate_Click;
+
+        _lblUpdateResult = AppTheme.MakeLabel("", AppTheme.FontSmall, AppTheme.TextSecondary);
+        _lblUpdateResult.Location = new Point(170, 207);
+        _lblUpdateResult.AutoSize = true;
+
+        var sep2 = new Panel { Location = new Point(20, 242), Height = 1, Width = 640, BackColor = AppTheme.Border };
+
+        // ─────────────────────────────────────────────────────────────────
+        //  SECTION 3: Manajemen Pengguna (Admin only — hidden for Operators)
         // ─────────────────────────────────────────────────────────────────
         _pnlUserSection = new Panel
         {
-            Location    = new Point(20, 152),
+            Location    = new Point(20, 254),
             Size        = new Size(640, 352),
             BackColor   = Color.Transparent
         };
@@ -169,6 +202,7 @@ public class SettingsForm : Form
         pnlBody.Controls.AddRange(new Control[]
         {
             lblImportTitle, lblProductCount, btnImport, btnSync, lblLastSync, lblHint, sep,
+            lblUpdateTitle, lblCurrentVersion, btnCheckUpdate, _lblUpdateResult, sep2,
             _pnlUserSection, _btnClose
         });
         Controls.Add(pnlBody);
@@ -194,18 +228,115 @@ public class SettingsForm : Form
 
         if (isAdmin)
         {
-            // Import section + user management
-            // _pnlUserSection at y=152, height=352 → bottom at 504
-            _btnClose.Location = new Point(570, 152 + 352 + 10);  // y = 514
-            Size        = new Size(720, 640);
-            MinimumSize = new Size(640, 520);
+            // Import + Update + User management
+            // _pnlUserSection at y=254, height=352 → bottom at 606
+            _btnClose.Location = new Point(570, 254 + 352 + 10);  // y = 616
+            Size        = new Size(720, 740);
+            MinimumSize = new Size(640, 620);
         }
         else
         {
-            // Import section only
-            _btnClose.Location = new Point(570, 160);
-            Size        = new Size(720, 280);
-            MinimumSize = new Size(640, 240);
+            // Import + Update sections only
+            _btnClose.Location = new Point(570, 260);
+            Size        = new Size(720, 380);
+            MinimumSize = new Size(640, 320);
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  UPDATE
+    // ════════════════════════════════════════════════════════════════════
+    private async void BtnCheckUpdate_Click(object? sender, EventArgs e)
+    {
+        var btn = (Button)sender!;
+        btn.Enabled            = false;
+        btn.Text               = "⏳ Memeriksa...";
+        _lblUpdateResult.Text  = "";
+
+        try
+        {
+            var info = await UpdateService.CheckAsync();
+
+            if (info == null)
+            {
+                _lblUpdateResult.Text      = "✔ Sudah versi terbaru";
+                _lblUpdateResult.ForeColor = AppTheme.Success;
+            }
+            else
+            {
+                _lblUpdateResult.Text      = $"⬆ v{info.Version} tersedia!";
+                _lblUpdateResult.ForeColor = Color.FromArgb(251, 191, 36); // amber
+
+                var confirm = MessageBox.Show(
+                    $"Pembaruan  v{info.Version}  tersedia!\n\n" +
+                    $"Aplikasi akan diunduh lalu diperbarui secara otomatis.\n" +
+                    $"Data di database Anda tidak terpengaruh.\n\n" +
+                    $"Lanjutkan update sekarang?",
+                    "Update Tersedia",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information,
+                    MessageBoxDefaultButton.Button1);
+
+                if (confirm == DialogResult.Yes)
+                    await DoUpdateFromSettings(info);
+            }
+        }
+        catch
+        {
+            _lblUpdateResult.Text      = "✘ Gagal memeriksa — cek koneksi internet";
+            _lblUpdateResult.ForeColor = AppTheme.Danger;
+        }
+        finally
+        {
+            btn.Enabled = true;
+            btn.Text    = "🔍 Cek Update";
+        }
+    }
+
+    private async Task DoUpdateFromSettings(UpdateService.ReleaseInfo info)
+    {
+        using var prog = new Form
+        {
+            Text            = "Mengunduh Pembaruan...",
+            Size            = new Size(420, 140),
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition   = FormStartPosition.CenterParent,
+            MaximizeBox     = false, MinimizeBox = false,
+            BackColor       = AppTheme.Background
+        };
+        var bar = new ProgressBar { Dock = DockStyle.Top, Height = 24, Minimum = 0, Maximum = 100 };
+        var lbl = new Label
+        {
+            Text      = "Memulai download...",
+            Dock      = DockStyle.Fill,
+            Font      = AppTheme.FontBase,
+            ForeColor = AppTheme.Text2,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        prog.Controls.Add(lbl);
+        prog.Controls.Add(bar);
+        prog.Show(this);
+
+        var progress = new Progress<(int Percent, string Status)>(p =>
+        {
+            if (!prog.IsDisposed)
+            {
+                bar.Value = Math.Clamp(p.Percent, 0, 100);
+                lbl.Text  = p.Status;
+                Application.DoEvents();
+            }
+        });
+
+        try
+        {
+            await UpdateService.DownloadAndApplyAsync(info, progress);
+            // Application exits inside DownloadAndApplyAsync — line below never reached
+        }
+        catch (Exception ex)
+        {
+            prog.Close();
+            MessageBox.Show(
+                $"Download gagal:\n{ex.Message}\n\nSilakan download manual dari:\n{info.HtmlUrl}",
+                "Update Gagal", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

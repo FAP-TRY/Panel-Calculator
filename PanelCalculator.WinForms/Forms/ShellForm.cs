@@ -79,7 +79,7 @@ public class ShellForm : Form
         var pnlRight = new Panel
         {
             Dock      = DockStyle.Right,
-            Width     = 360,
+            Width     = 240,
             BackColor = Color.Transparent
         };
 
@@ -93,23 +93,6 @@ public class ShellForm : Form
             TextAlign = ContentAlignment.MiddleRight,
             Padding   = new Padding(0, 0, 8, 0)
         };
-
-        // Pengguna button (admin only; hidden for operators)
-        var btnUsers = new Button
-        {
-            Text      = "👥 Pengguna",
-            Width     = 110,
-            Height    = 30,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = AppTheme.Bg2,
-            ForeColor = AppTheme.Text2,
-            Font      = AppTheme.FontSmall,
-            Cursor    = Cursors.Hand,
-            Visible   = false   // shown on Load if Admin
-        };
-        btnUsers.FlatAppearance.BorderSize = 0;
-        btnUsers.FlatAppearance.MouseOverBackColor = AppTheme.Bg3;
-        btnUsers.Click += BtnUsers_Click;
 
         // Logout button
         var btnLogout = new Button
@@ -155,7 +138,7 @@ public class ShellForm : Form
             Width     = 56
         };
 
-        // Position: logout → users → update → version → userinfo
+        // Position: logout → update → version → userinfo
         pnlRight.Layout += (s, e) =>
         {
             int cx = pnlRight.Width - 8;
@@ -163,19 +146,16 @@ public class ShellForm : Form
             btnLogout.Top  = (pnlRight.Height - btnLogout.Height) / 2;
             btnLogout.Left = cx - btnLogout.Width;
 
-            btnUsers.Top  = (pnlRight.Height - btnUsers.Height) / 2;
-            btnUsers.Left = btnLogout.Left - btnUsers.Width - 6;
-
             if (_btnUpdate.Visible)
             {
                 _btnUpdate.Top  = (pnlRight.Height - _btnUpdate.Height) / 2;
-                _btnUpdate.Left = btnUsers.Left - _btnUpdate.Width - 6;
+                _btnUpdate.Left = btnLogout.Left - _btnUpdate.Width - 6;
                 lblVersion.SetBounds(_btnUpdate.Left - lblVersion.Width - 4, 0,
                     lblVersion.Width, pnlRight.Height);
             }
             else
             {
-                lblVersion.SetBounds(btnUsers.Left - lblVersion.Width - 4, 0,
+                lblVersion.SetBounds(btnLogout.Left - lblVersion.Width - 4, 0,
                     lblVersion.Width, pnlRight.Height);
             }
 
@@ -184,7 +164,7 @@ public class ShellForm : Form
         };
 
         pnlRight.Controls.AddRange(new Control[]
-            { lblUserInfo, lblVersion, btnUsers, _btnUpdate, btnLogout });
+            { lblUserInfo, lblVersion, _btnUpdate, btnLogout });
 
         pnlTopBar.Controls.Add(pnlRight);
         pnlTopBar.Controls.Add(lblAppTitle);
@@ -198,7 +178,6 @@ public class ShellForm : Form
         Load += (s, e) =>
         {
             lblUserInfo.Text = $"{CurrentUser.FullName}  ({CurrentUser.Role})";
-            btnUsers.Visible = CurrentUser.Role == "Admin";
             ShowCalcForm();
 
             // Background update check — never blocks the UI
@@ -222,14 +201,6 @@ public class ShellForm : Form
         }
         _calcForm.CurrentUser = CurrentUser;
         _calcForm.Visible     = true;
-    }
-
-    // ── Users button ──────────────────────────────────────────────────────
-    private void BtnUsers_Click(object? sender, EventArgs e)
-    {
-        if (CurrentUser.Role != "Admin") return;
-        using var form = new UserManagementForm(_context);
-        form.ShowDialog(this);
     }
 
     // ── Logout ────────────────────────────────────────────────────────────

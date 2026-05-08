@@ -71,7 +71,7 @@ public partial class MainForm : Form
     private DateTimePicker dtpEstOrderDate  = null!;
 
     private Button btnSave = null!, btnNew = null!, btnHistory = null!;
-    private Button btnReports = null!, btnSettings = null!;
+    private Button btnSettings = null!;
     private Button btnDashboard = null!;
     private Label  lblStatus = null!;
 
