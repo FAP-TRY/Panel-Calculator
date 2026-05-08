@@ -534,7 +534,7 @@ public partial class MainForm : Form
         txtClientName   = AddInfoField(pnlSummary, ref y, "Nama Klien *",     "Contoh: Budi Santoso");
         txtCompany      = AddInfoField(pnlSummary, ref y, "Perusahaan",        "Nama perusahaan / instansi");
         txtContactPhone = AddInfoField(pnlSummary, ref y, "No Kontak",         "08xx-xxxx-xxxx");
-        txtProjectName  = AddInfoField(pnlSummary, ref y, "Nama Produk",       "Panel MDP 3-Phase 400A");
+        txtProjectName  = AddInfoField(pnlSummary, ref y, "Perihal",            "Panel MDP 3-Phase 400A");
         txtAddress      = AddInfoField(pnlSummary, ref y, "Alamat",            "Alamat pengiriman");
 
         // Tanggal Pembuatan
@@ -1467,6 +1467,7 @@ public partial class MainForm : Form
                     contactPhone:     !string.IsNullOrWhiteSpace(txtContactPhone.Text) ? txtContactPhone.Text.Trim() : null,
                     company:          !string.IsNullOrWhiteSpace(txtCompany.Text)      ? txtCompany.Text.Trim()      : null,
                     address:          !string.IsNullOrWhiteSpace(txtAddress.Text)      ? txtAddress.Text.Trim()      : null,
+                    perihal:          !string.IsNullOrWhiteSpace(txtProjectName.Text)  ? txtProjectName.Text.Trim()  : null,
                     createdDate:      dtpCreatedDate.Value,
                     notes:            txtNotes.Text.Trim(),
                     items:            letterItems,

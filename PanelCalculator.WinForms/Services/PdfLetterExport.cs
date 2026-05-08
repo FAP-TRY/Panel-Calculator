@@ -52,6 +52,7 @@ public static class PdfLetterExport
         string? contactPhone,
         string? company,
         string? address,
+        string? perihal,
         DateTime createdDate,
         string  notes,
         IReadOnlyList<LineItem> items,
@@ -94,7 +95,7 @@ public static class PdfLetterExport
 
         // ── Page 1 ────────────────────────────────────────────────────────
         Page1(doc, reg, bold,
-            estimationNumber, clientName, contactPhone, company, address,
+            estimationNumber, clientName, contactPhone, company, address, perihal,
             createdDate, notes, items,
             subtotal, marginAmount, shippingCost, taxPercent, taxAmount, pphAmount, total,
             signerName, signerTitle, offerLocation);
@@ -157,7 +158,7 @@ public static class PdfLetterExport
     private static void Page1(
         Document doc, PdfFont reg, PdfFont bold,
         string estNo,
-        string clientName, string? contactPhone, string? company, string? address,
+        string clientName, string? contactPhone, string? company, string? address, string? perihal,
         DateTime date, string notes,
         IReadOnlyList<LineItem> items,
         decimal subtotal, decimal marginAmount, decimal shippingCost,
@@ -174,7 +175,7 @@ public static class PdfLetterExport
         var refTbl = new Table(UnitValue.CreatePercentArray(new float[] { 20, 2, 78 }))
             .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(14);
         AddRef(refTbl, "Nomor",    estNo,              reg, bold);
-        AddRef(refTbl, "Perihal",  "Informasi Harga",  reg, bold);
+        AddRef(refTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal : "Informasi Harga", reg, bold);
         AddRef(refTbl, "Lampiran", "Rincian Material", reg, bold);
         doc.Add(refTbl);
 

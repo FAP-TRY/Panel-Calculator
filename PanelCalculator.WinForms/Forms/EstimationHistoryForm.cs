@@ -221,6 +221,7 @@ public class EstimationHistoryForm : Form
                 contactPhone:     est.ContactPhone,
                 company:          est.Company,
                 address:          est.Address,
+                perihal:          est.ProjectName,
                 createdDate:      est.CreatedDate,
                 notes:            est.Notes ?? "",
                 items:            letterItems,
