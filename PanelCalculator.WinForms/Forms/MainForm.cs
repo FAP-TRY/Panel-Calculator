@@ -60,6 +60,7 @@ public partial class MainForm : Form
     private NumericUpDown numPPh    = null!;
 
     // ── Client info fields (live in summary panel, no dialog) ────────────
+    private TextBox        txtNomorSurat    = null!;
     private TextBox        txtClientName    = null!;
     private TextBox        txtContactPhone  = null!;
     private TextBox        txtCompany       = null!;
@@ -530,6 +531,40 @@ public partial class MainForm : Form
         var lblInfoHead = AppTheme.MakeLabel("INFO ESTIMASI", AppTheme.FontBold, AppTheme.Primary);
         lblInfoHead.Location = new Point(0, y); y += 24;
         pnlSummary.Controls.Add(lblInfoHead);
+
+        // ── No. Surat (manual) + lanjutkan button ────────────────────────
+        var lblNomorSurat = AppTheme.MakeLabel("No. Surat", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblNomorSurat.Location = new Point(0, y);
+        pnlSummary.Controls.Add(lblNomorSurat); y += 17;
+
+        txtNomorSurat = new TextBox
+        {
+            Location         = new Point(0, y),
+            Width            = 160,
+            PlaceholderText  = "Contoh: 136/PR.BDG/IV/2026",
+            Font             = AppTheme.FontBase,
+            Anchor           = AnchorStyles.Top | AnchorStyles.Left
+        };
+        AppTheme.StyleTextBox(txtNomorSurat);
+
+        var btnLanjutkan = new Button
+        {
+            Text      = "↩",
+            Location  = new Point(165, y),
+            Width     = 34,
+            Height    = 26,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppTheme.Bg2,
+            ForeColor = AppTheme.Text2,
+            Font      = new Font("Segoe UI", 10f),
+            Cursor    = Cursors.Hand
+        };
+        btnLanjutkan.FlatAppearance.BorderSize = 0;
+        btnLanjutkan.FlatAppearance.MouseOverBackColor = AppTheme.Bg3;
+        btnLanjutkan.Click += async (s, e) => await LanjutkanNomorSuratAsync();
+        pnlSummary.Controls.Add(txtNomorSurat);
+        pnlSummary.Controls.Add(btnLanjutkan);
+        y += 30;
 
         txtClientName   = AddInfoField(pnlSummary, ref y, "Nama Klien *",     "Contoh: Budi Santoso");
         txtCompany      = AddInfoField(pnlSummary, ref y, "Perusahaan",        "Nama perusahaan / instansi");
@@ -1307,6 +1342,7 @@ public partial class MainForm : Form
         if (lblShippingNote != null) lblShippingNote.Text = "Belum dihitung";
 
         // Clear client info fields
+        txtNomorSurat.Clear();
         txtClientName.Clear();
         txtContactPhone.Clear();
         txtCompany.Clear();
@@ -1376,6 +1412,7 @@ public partial class MainForm : Form
         var estimation = new Estimation
         {
             EstimationNumber  = estNumber,
+            NomorSurat        = txtNomorSurat.Text.Trim().NullIfEmpty(),
             ClientName        = txtClientName.Text.Trim(),
             ContactPhone      = txtContactPhone.Text.Trim(),
             Company           = txtCompany.Text.Trim(),
@@ -1462,7 +1499,7 @@ public partial class MainForm : Form
 
                 PdfLetterExport.Generate(
                     outputPath:       sfd.FileName,
-                    estimationNumber: $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
+                    estimationNumber: !string.IsNullOrWhiteSpace(txtNomorSurat.Text) ? txtNomorSurat.Text.Trim() : $"DRAFT-{DateTime.Now:yyyyMMdd-HHmm}",
                     clientName:       !string.IsNullOrWhiteSpace(txtClientName.Text) ? txtClientName.Text.Trim() : "—",
                     contactPhone:     !string.IsNullOrWhiteSpace(txtContactPhone.Text) ? txtContactPhone.Text.Trim() : null,
                     company:          !string.IsNullOrWhiteSpace(txtCompany.Text)      ? txtCompany.Text.Trim()      : null,
@@ -1718,6 +1755,7 @@ public partial class MainForm : Form
         catch { }
 
         // Restore client info fields
+        txtNomorSurat.Text   = est.NomorSurat   ?? "";
         txtClientName.Text   = est.ClientName;
         txtContactPhone.Text = est.ContactPhone ?? "";
         txtCompany.Text      = est.Company      ?? "";
@@ -1780,6 +1818,32 @@ public partial class MainForm : Form
         "Jasa"               => Color.FromArgb(240, 171, 252), // fuchsia-300
         _                    => AppTheme.Text2
     };
+
+    // ── Lanjutkan Nomor Surat ─────────────────────────────────────────────
+    /// <summary>Fills txtNomorSurat with the most recent estimation's NomorSurat so the
+    /// user can edit it for the new letter (e.g. increment the counter).</summary>
+    private async Task LanjutkanNomorSuratAsync()
+    {
+        try
+        {
+            var all = await _estimationRepo.GetAllWithDetailsAsync();
+            var last = all.OrderByDescending(e => e.CreatedDate)
+                          .FirstOrDefault(e => !string.IsNullOrWhiteSpace(e.NomorSurat));
+            if (last == null)
+            {
+                SetStatus("Belum ada nomor surat sebelumnya.");
+                return;
+            }
+            txtNomorSurat.Text = last.NomorSurat!;
+            txtNomorSurat.Focus();
+            txtNomorSurat.SelectAll();
+            SetStatus($"Nomor surat diisi dari: {last.EstimationNumber}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Gagal memuat nomor surat: {ex.Message}");
+        }
+    }
 
     private void SetStatus(string msg) => lblStatus.Text = msg;
 

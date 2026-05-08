@@ -17,6 +17,9 @@ public class Estimation
 
     public string? Address { get; set; }
 
+    /// <summary>Nomor surat resmi yang diketik manual, e.g. "136.Rev1/PR.BDG/IV/2026"</summary>
+    public string? NomorSurat { get; set; }
+
     /// <summary>Nama panel/produk yang dikerjakan, e.g. "Panel MDP 3-Phase 400A"</summary>
     public string? ProjectName { get; set; }
 

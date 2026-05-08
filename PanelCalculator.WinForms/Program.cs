@@ -97,6 +97,7 @@ static class Program
             TryExec("ALTER TABLE Estimations ADD COLUMN Address TEXT NULL");
             TryExec("ALTER TABLE Estimations ADD COLUMN ProjectName TEXT NULL");
             TryExec("ALTER TABLE Estimations ADD COLUMN EstimatedOrderDate TEXT NULL");
+            TryExec("ALTER TABLE Estimations ADD COLUMN NomorSurat TEXT NULL");
 
             // Users table
             TryExec(@"CREATE TABLE IF NOT EXISTS Users (

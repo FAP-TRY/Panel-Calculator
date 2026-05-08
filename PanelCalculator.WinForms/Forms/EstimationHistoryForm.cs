@@ -216,7 +216,7 @@ public class EstimationHistoryForm : Form
 
             PdfLetterExport.Generate(
                 outputPath:       tempPath,
-                estimationNumber: est.EstimationNumber,
+                estimationNumber: !string.IsNullOrWhiteSpace(est.NomorSurat) ? est.NomorSurat : est.EstimationNumber,
                 clientName:       est.ClientName,
                 contactPhone:     est.ContactPhone,
                 company:          est.Company,

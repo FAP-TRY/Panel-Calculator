@@ -165,37 +165,48 @@ public static class PdfLetterExport
         decimal taxPct, decimal taxAmt, decimal pphAmt, decimal total,
         string signerName, string signerTitle, string offerLocation)
     {
-        // ── Date (right-aligned) ──────────────────────────────────────────
         var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
         var dateStr = date.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
-        doc.Add(P($"{city}, {dateStr}", reg, 10, ColorDark)
-            .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(14));
 
-        // ── Nomor / Perihal / Lampiran ────────────────────────────────────
-        var refTbl = new Table(UnitValue.CreatePercentArray(new float[] { 20, 2, 78 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(14);
-        AddRef(refTbl, "Nomor",    estNo,              reg, bold);
-        AddRef(refTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal : "Informasi Harga", reg, bold);
-        AddRef(refTbl, "Lampiran", "Rincian Material", reg, bold);
-        doc.Add(refTbl);
+        // ── Two-column header: [Nomor/Perihal/Lampiran] | [Kepada + address] ──
+        var hdrTbl = new Table(UnitValue.CreatePercentArray(new float[] { 48, 52 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(10);
 
-        // ── Kepada Yth. ───────────────────────────────────────────────────
-        doc.Add(P("Kepada Yth.", bold, 10, ColorDark).SetMarginBottom(1));
-        var toLines = new List<string> { clientName };
-        if (!string.IsNullOrWhiteSpace(company))      toLines.Add(company);
-        if (!string.IsNullOrWhiteSpace(address))      toLines.Add(address);
-        if (!string.IsNullOrWhiteSpace(contactPhone)) toLines.Add($"Telp: {contactPhone}");
-        foreach (var line in toLines)
-            doc.Add(P(line, reg, 10, ColorDark).SetMarginBottom(0));
-        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(12));
+        // Left: ref block
+        var leftRefTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 4, 68 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
+        AddRef(leftRefTbl, "Nomor",    estNo,              reg, bold);
+        AddRef(leftRefTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal : "Informasi Harga", reg, bold);
+        AddRef(leftRefTbl, "Lampiran", "Rincian Material", reg, bold);
+        var leftCell = new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl);
+        hdrTbl.AddCell(leftCell);
+
+        // Right: Kepada block
+        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
+        rightCell.Add(P("Kepada:", bold, 10, ColorDark).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(company))
+            rightCell.Add(P(company, bold, 10, ColorDark).SetMarginBottom(0));
+        if (!string.IsNullOrWhiteSpace(address))
+        {
+            // Split address on commas or newlines for better readability
+            foreach (var line in address.Split(new[]{'\n','\r'}, StringSplitOptions.RemoveEmptyEntries))
+                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
+        }
+        if (!string.IsNullOrWhiteSpace(contactPhone))
+            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
+        hdrTbl.AddCell(rightCell);
+        doc.Add(hdrTbl);
+
+        // ── "Up." contact person line (centered, bold) ────────────────────
+        if (!string.IsNullOrWhiteSpace(clientName))
+            doc.Add(P($"Up. {clientName}", bold, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(14));
 
         // ── Salutation ────────────────────────────────────────────────────
-        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(8));
+        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));
         doc.Add(P(
-            "Bersama surat ini kami sampaikan informasi harga untuk pengadaan " +
-            "material panel listrik kepada Bapak/Ibu. " +
-            "Adapun rincian harga adalah sebagai berikut:",
-            reg, 10, ColorDark).SetMarginBottom(12));
+            "Berikut ini kami sampaikan informasi harga Panel sebagai berikut:",
+            reg, 10, ColorDark).SetMarginBottom(10));
 
         // ── Price summary table ───────────────────────────────────────────
         var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
@@ -208,7 +219,7 @@ public static class PdfLetterExport
         float[] pw = { 8, 62, 30 };
         var ptbl = new Table(UnitValue.CreatePercentArray(pw)).UseAllAvailableWidth().SetMarginBottom(4);
         TblHdr(ptbl, bold,
-            new[] { "No.", "Nama Barang", "Harga" },
+            new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
             new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
 
         int no = 0;
@@ -216,21 +227,10 @@ public static class PdfLetterExport
         {
             no++;
             var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
-            ptbl.AddCell(DC(no.ToString(),  reg, 9, bg, TextAlignment.CENTER));
-            ptbl.AddCell(DC(name,           reg, 9, bg, TextAlignment.LEFT));
-            ptbl.AddCell(DC(Rp(st) + ",-", reg, 9, bg, TextAlignment.RIGHT));
+            ptbl.AddCell(DC($"{no}.",      reg, 9, bg, TextAlignment.CENTER));
+            ptbl.AddCell(DC(name,          reg, 9, bg, TextAlignment.LEFT));
+            ptbl.AddCell(DC(FmtNum(st) + ",-", reg, 9, bg, TextAlignment.RIGHT));
         }
-
-        // Total row
-        ptbl.AddCell(new Cell(1, 2)
-            .SetBackgroundColor(ColorTotal).SetBorder(new SolidBorder(ColorBorder, 0.5f))
-            .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingLeft(6)
-            .Add(P("Total", bold, 9, ColorDark)));
-        ptbl.AddCell(new Cell()
-            .SetBackgroundColor(ColorTotal).SetBorder(new SolidBorder(ColorBorder, 0.5f))
-            .SetTextAlignment(TextAlignment.RIGHT)
-            .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingRight(6)
-            .Add(P(Rp(subtotal) + ",-", bold, 9, ColorDark)));
         doc.Add(ptbl);
 
         if (taxPct > 0)
@@ -240,13 +240,15 @@ public static class PdfLetterExport
             doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(8));
 
         // ── Kondisi Penawaran ─────────────────────────────────────────────
-        doc.Add(P("Kondisi Penawaran:", bold, 10, ColorDark).SetMarginBottom(4));
+        doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
         var conds = new[]
         {
-            taxPct > 0 ? $"Harga belum termasuk PPN {taxPct:F0}%" : "Harga sudah termasuk PPN",
-            $"Loco {city}",
-            "Uang muka 30% dari total harga",
-            "Harga dapat berubah sewaktu-waktu tanpa pemberitahuan terlebih dahulu"
+            taxPct > 0
+                ? $"Harga belum termasuk PPN (menyesuaikan peraturan pemerintah)"
+                : "Harga sudah termasuk PPN",
+            $"Harga loco {city}",
+            "DP 30% saat PO kami terima dan pelunasan 70% pada saat barang akan dikirimkan",
+            "Harga tidak terikat dan dapat berubah sewaktu-waktu"
         };
         for (int ci = 0; ci < conds.Length; ci++)
             doc.Add(P($"{ci + 1}. {conds[ci]}", reg, 10, ColorDark).SetMarginBottom(2));
@@ -260,16 +262,16 @@ public static class PdfLetterExport
 
         // ── Closing ───────────────────────────────────────────────────────
         doc.Add(P(
-            "Demikian informasi harga yang dapat kami sampaikan. " +
-            "Atas perhatian dan kerja sama Bapak/Ibu, kami ucapkan terima kasih.",
-            reg, 10, ColorDark).SetMarginBottom(18));
+            "Demikian surat penawaran ini kami sampaikan. " +
+            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.",
+            reg, 10, ColorDark).SetMarginBottom(20));
 
-        // ── Signature ─────────────────────────────────────────────────────
-        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
+        // ── Signature block ───────────────────────────────────────────────
+        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 45, 55 }))
             .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
         var sigCell = new Cell().SetBorder(Border.NO_BORDER)
-            .Add(P("Hormat kami,",          reg,  10, ColorDark).SetMarginBottom(2))
-            .Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark).SetMarginBottom(50));
+            .Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(1))
+            .Add(P("PT. Tritunggal Swarna", reg, 10, ColorDark).SetMarginBottom(46));
         if (!string.IsNullOrWhiteSpace(signerName))
             sigCell.Add(P(signerName,  bold, 10, ColorDark).SetMarginBottom(0));
         if (!string.IsNullOrWhiteSpace(signerTitle))
@@ -373,4 +375,8 @@ public static class PdfLetterExport
 
     private static string Rp(decimal value)
         => "Rp " + value.ToString("N0", IdCulture);
+
+    /// <summary>Format number Indonesian style without "Rp" prefix (e.g. 31.284.000)</summary>
+    private static string FmtNum(decimal value)
+        => value.ToString("N0", IdCulture);
 }
