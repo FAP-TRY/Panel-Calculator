@@ -403,28 +403,11 @@ public partial class MainForm : Form
             };
         };
 
-        // ── "+" Add-product button ────────────────────────────────────────
-        var btnAddToSection = new Button
-        {
-            Text      = "+",
-            Location  = new Point(399, 4),
-            Width     = 30,
-            Height    = 26,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = AppTheme.Brand500,
-            ForeColor = Color.White,
-            Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
-            Cursor    = Cursors.Hand,
-        };
-        btnAddToSection.FlatAppearance.BorderSize = 0;
-        btnAddToSection.FlatAppearance.MouseOverBackColor = AppTheme.Brand600;
-        btnAddToSection.Click += BtnAddToSection_Click;
-
         // ── "Tambah Grup" button ──────────────────────────────────────────
         var btnTambahGrup = new Button
         {
             Text      = "＋ Tambah Grup",
-            Location  = new Point(433, 4),
+            Location  = new Point(399, 4),
             Width     = 115,
             Height    = 26,
             FlatStyle = FlatStyle.Flat,
@@ -437,7 +420,7 @@ public partial class MainForm : Form
         btnTambahGrup.FlatAppearance.MouseOverBackColor = AppTheme.Success400;
         btnTambahGrup.Click += BtnTambahGrup_Click;
 
-        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection, btnAddToSection, btnTambahGrup });
+        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection, btnTambahGrup });
 
         dgvItems = new DataGridView { Dock = DockStyle.Fill, AllowDrop = true };
         AppTheme.StyleGrid(dgvItems);
@@ -1143,21 +1126,6 @@ public partial class MainForm : Form
         if (e.Data?.GetData(typeof(int)) is not int rowIdx) return;
         if (rowIdx < 0 || rowIdx >= dgvProducts.Rows.Count) return;
         AddProductRowToEstimation(dgvProducts.Rows[rowIdx]);
-    }
-
-    // ── Tombol "+" ────────────────────────────────────────────────────────
-
-    /// <summary>Tombol "+" — tambah produk yang sedang dipilih di daftar kiri ke section aktif.</summary>
-    private void BtnAddToSection_Click(object? sender, EventArgs e)
-    {
-        var row = dgvProducts.CurrentRow;
-        if (row == null || row.Index < 0)
-        {
-            SetStatus("Pilih produk di daftar kiri terlebih dahulu.");
-            return;
-        }
-        // Reuse the same logic as double-click
-        AddProductRowToEstimation(row);
     }
 
     private void DgvProducts_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
