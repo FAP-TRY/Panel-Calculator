@@ -1392,7 +1392,7 @@ public partial class MainForm : Form
             PPhPercent        = _pphPercent,
             PPh               = pphAmt,
             TotalPrice        = total,
-            Status            = "Antri Hitung",
+            Status            = "Draft",
             CreatedDate       = dtpCreatedDate.Value.ToUniversalTime(),
             EstimatedOrderDate = dtpEstOrderDate.Value.ToUniversalTime()
         };

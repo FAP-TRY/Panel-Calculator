@@ -73,14 +73,12 @@ public class ReportsForm : Form
 
         // Single query — no lazy loading needed
         var estimations = _context.Estimations.AsNoTracking().ToList();
-        var won  = estimations.Where(e => e.Status == "Won").ToList();
-        var sent = estimations.Where(e => e.Status == "Sent").ToList();
+        var approved = estimations.Where(e => e.Status == "Approved").ToList();
+        var draft    = estimations.Where(e => e.Status == "Draft").ToList();
 
-        var totalRevenue = won.Sum(e => e.TotalPrice);
-        var pipeline     = sent.Sum(e => e.TotalPrice);
-        var avgDeal      = won.Count > 0 ? totalRevenue / won.Count : 0;
-        var closedCount  = estimations.Count(e => e.Status is "Won" or "Lost");
-        var winRate      = closedCount > 0 ? (double)won.Count / closedCount * 100 : 0;
+        var totalApproved = approved.Sum(e => e.TotalPrice);
+        var totalDraft    = draft.Sum(e => e.TotalPrice);
+        var avgDeal       = approved.Count > 0 ? totalApproved / approved.Count : 0;
 
         var title = AppTheme.MakeLabel("Ringkasan Penjualan", AppTheme.FontTitle, AppTheme.TextPrimary);
         title.Dock = DockStyle.Top;
@@ -92,11 +90,10 @@ public class ReportsForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false, BackColor = Color.Transparent
         };
-        pnlCards.Controls.Add(MakeKpiCard("Total Pendapatan", Fmt(totalRevenue), AppTheme.Success));
-        pnlCards.Controls.Add(MakeKpiCard("Pipeline (Sent)",  Fmt(pipeline),     AppTheme.Primary));
+        pnlCards.Controls.Add(MakeKpiCard("Total Approved",   Fmt(totalApproved), AppTheme.Success));
+        pnlCards.Controls.Add(MakeKpiCard("Total Draft",      Fmt(totalDraft),    AppTheme.Primary));
         pnlCards.Controls.Add(MakeKpiCard("Total Estimasi",   estimations.Count.ToString(), AppTheme.TextSecondary));
-        pnlCards.Controls.Add(MakeKpiCard("Win Rate",         $"{winRate:F1}%",  AppTheme.Warning));
-        pnlCards.Controls.Add(MakeKpiCard("Rata-rata Deal",   Fmt(avgDeal),      AppTheme.TextPrimary));
+        pnlCards.Controls.Add(MakeKpiCard("Rata-rata Deal",   Fmt(avgDeal),       AppTheme.TextPrimary));
 
         var dgv = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgv);
@@ -115,12 +112,8 @@ public class ReportsForm : Form
                 est.CreatedDate.ToLocalTime().ToString("dd MMM yyyy"),
                 est.Status,
                 Fmt(est.TotalPrice));
-            dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = est.Status switch
-            {
-                "Won"  => AppTheme.Success,
-                "Lost" => AppTheme.Danger,
-                _      => AppTheme.TextSecondary
-            };
+            var (fg, _) = AppTheme.GetStatusColor(est.Status);
+            dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = fg;
         }
 
         pnlContent.Controls.Add(dgv);
@@ -136,7 +129,7 @@ public class ReportsForm : Form
         title.Dock = DockStyle.Top;
         title.Height = 44;
 
-        var statuses    = new[] { "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove", "Won", "Lost" };
+        var statuses    = new[] { "Draft", "Approved" };
         var estimations = _context.Estimations.AsNoTracking().ToList();
 
         var pnlCards = new FlowLayoutPanel
@@ -150,14 +143,7 @@ public class ReportsForm : Form
         {
             var items = estimations.Where(e => e.Status == status).ToList();
             var value = items.Sum(e => e.TotalPrice);
-            var color = status switch
-            {
-                "Won"      => AppTheme.Success,
-                "Lost"     => AppTheme.Danger,
-                "Approved" => AppTheme.Primary,
-                "Sent"     => AppTheme.Warning,
-                _          => AppTheme.TextSecondary
-            };
+            var (color, _) = AppTheme.GetStatusColor(status);
             pnlCards.Controls.Add(MakeKpiCard($"{status} ({items.Count})", Fmt(value), color));
         }
 

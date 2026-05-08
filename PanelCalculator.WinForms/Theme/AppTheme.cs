@@ -115,13 +115,9 @@ public static class AppTheme
 
     public static (Color fg, Color bg) GetStatusColor(string? status) => status?.Trim() switch
     {
-        "Antri Hitung"     => (Warning400,  Color.FromArgb( 40, 30, 15)),
-        "Selesai Dihitung" => (Cyan300,     Color.FromArgb(  8, 28, 40)),
-        "Menunggu Approve" => (Warning400,  Color.FromArgb( 40, 30, 10)),
-        "Sudah Diapprove"  => (Success400,  Color.FromArgb(  8, 32, 22)),
-        "Approved"         => (Success400,  Color.FromArgb(  8, 32, 22)),
-        "Draft"            => (Text3,       Color.FromArgb( 18, 20, 36)),
-        _                  => (Text3,       Color.FromArgb( 18, 20, 36))
+        "Approved" => (Success400, Color.FromArgb(8, 32, 22)),
+        "Draft"    => (Text3,      Color.FromArgb(18, 20, 36)),
+        _          => (Text3,      Color.FromArgb(18, 20, 36))
     };
 
     // ════════════════════════════════════════════════════════

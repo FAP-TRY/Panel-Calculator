@@ -54,10 +54,7 @@ public class EstimationHistoryForm : Form
 
         cmbStatus = new ComboBox { Location = new Point(328, 28), Width = 140, DropDownStyle = ComboBoxStyle.DropDownList };
         AppTheme.StyleComboBox(cmbStatus);
-        cmbStatus.Items.AddRange(new[] {
-            "Semua",
-            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove"
-        });
+        cmbStatus.Items.AddRange(new[] { "Semua", "Draft", "Approved" });
         cmbStatus.SelectedIndex = 0;
         cmbStatus.SelectedIndexChanged += (s, e) => FilterGrid();
 
@@ -319,9 +316,7 @@ public class StatusChangeDialog : Form
 
         cmb = new ComboBox { Location = new Point(20, 44), Width = 240, DropDownStyle = ComboBoxStyle.DropDownList };
         AppTheme.StyleComboBox(cmb);
-        cmb.Items.AddRange(new[] {
-            "Antri Hitung", "Selesai Dihitung", "Menunggu Approve", "Sudah Diapprove"
-        });
+        cmb.Items.AddRange(new[] { "Draft", "Approved" });
         cmb.SelectedItem = currentStatus;
 
         var btnOk = new Button { Text = "Simpan", Location = new Point(20, 85), Width = 110, Height = 32 };
