@@ -394,7 +394,24 @@ public partial class MainForm : Form
             };
         };
 
-        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection });
+        // ── "+" Add button ────────────────────────────────────────────────
+        var btnAddToSection = new Button
+        {
+            Text      = "+",
+            Location  = new Point(399, 4),
+            Width     = 30,
+            Height    = 26,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = AppTheme.Brand500,
+            ForeColor = Color.White,
+            Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Cursor    = Cursors.Hand,
+        };
+        btnAddToSection.FlatAppearance.BorderSize = 0;
+        btnAddToSection.FlatAppearance.MouseOverBackColor = AppTheme.Brand600;
+        btnAddToSection.Click += BtnAddToSection_Click;
+
+        pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblTambahKe, cmbTargetSection, btnAddToSection });
 
         dgvItems = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgvItems);
@@ -1042,11 +1059,31 @@ public partial class MainForm : Form
         }
     }
 
+    /// <summary>Tombol "+" — tambah produk yang sedang dipilih di daftar kiri ke section aktif.</summary>
+    private void BtnAddToSection_Click(object? sender, EventArgs e)
+    {
+        var row = dgvProducts.CurrentRow;
+        if (row == null || row.Index < 0)
+        {
+            SetStatus("Pilih produk di daftar kiri terlebih dahulu.");
+            return;
+        }
+        // Reuse the same logic as double-click
+        AddProductRowToEstimation(row);
+    }
+
     private void DgvProducts_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
     {
         if (e.RowIndex < 0) return;
-        var row = dgvProducts.Rows[e.RowIndex];
+        AddProductRowToEstimation(dgvProducts.Rows[e.RowIndex]);
+    }
 
+    /// <summary>
+    /// Core add-to-estimation logic shared by double-click and the "+" button.
+    /// If the same product already exists in the target section, increments qty.
+    /// </summary>
+    private void AddProductRowToEstimation(DataGridViewRow row)
+    {
         var refCode = row.Cells["ColRef"].Value?.ToString() ?? "";
         var name    = row.Cells["ColName"].Value?.ToString() ?? "";
         var price   = row.Cells["ColPrice"].Value is decimal p ? p : 0m;
@@ -1055,7 +1092,7 @@ public partial class MainForm : Form
 
         var targetSection = cmbTargetSection.SelectedItem?.ToString() ?? "Material Utama";
 
-        // If same product already in the SAME section → add qty, else add new row
+        // Same product in same section → increment qty
         var existing = _currentItems.FirstOrDefault(i => i.ProductId == prodId && i.Section == targetSection);
         if (existing != null)
         {
@@ -1080,7 +1117,7 @@ public partial class MainForm : Form
 
         RefreshItemsGrid();
         RecalcSummary();
-        SetStatus($"Ditambahkan: {name}");
+        SetStatus($"Ditambahkan: {name}  →  {targetSection}");
     }
 
     private void DgvItems_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
@@ -1468,36 +1505,25 @@ public partial class MainForm : Form
                 .Where(x => x.item.Section == section)
                 .ToList();
 
-            var hdrBg  = SectionHeaderColor(section);
-            var rowBg  = SectionRowColor(section);
+            // ── Skip sections that have no items ──────────────────────────
+            if (sectionItems.Count == 0) continue;
+
+            var hdrBg    = SectionHeaderColor(section);
+            var rowBg    = SectionRowColor(section);
             var secTotal = sectionItems.Sum(x => x.item.LineTotal);
 
-            // ── Section header row (ALWAYS shown, even if empty) ──────────
+            // ── Section header row ────────────────────────────────────────
             int hIdx = dgvItems.Rows.Add();
             var hRow = dgvItems.Rows[hIdx];
 
-            hRow.Cells["ColItemRef"].Value  = $"▶  {section.ToUpper()}";
-            hRow.Cells["ColItemTotal"].Value = sectionItems.Count > 0 ? FormatRupiah(secTotal) : "";
+            hRow.Cells["ColItemRef"].Value   = $"▶  {section.ToUpper()}";
+            hRow.Cells["ColItemTotal"].Value = FormatRupiah(secTotal);
 
             hRow.DefaultCellStyle.BackColor = hdrBg;
             hRow.DefaultCellStyle.ForeColor = SectionHeaderForeColor(section);
             hRow.DefaultCellStyle.Font      = AppTheme.FontBold;
             hRow.ReadOnly = true;
             hRow.Tag      = -1; // sentinel: not an item row
-
-            // ── Placeholder row when section is empty ─────────────────────
-            if (sectionItems.Count == 0)
-            {
-                int pIdx = dgvItems.Rows.Add("", "— Belum ada item. Klik 2x produk untuk menambahkan —",
-                    "", "", "", "", "", "", "", "");
-                var pRow = dgvItems.Rows[pIdx];
-                pRow.ReadOnly = true;
-                pRow.DefaultCellStyle.BackColor = rowBg;
-                pRow.DefaultCellStyle.ForeColor = AppTheme.Text3;
-                pRow.DefaultCellStyle.Font      = new Font("Segoe UI", 8f, FontStyle.Italic);
-                pRow.Tag = -1;
-                continue;
-            }
 
             // ── Item rows ─────────────────────────────────────────────────
             foreach (var (item, itemIdx) in sectionItems)
