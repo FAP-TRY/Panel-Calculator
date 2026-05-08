@@ -16,10 +16,12 @@ public class DashboardForm : Form
     private readonly User                    _currentUser;
 
     // Definisi kolom pipeline
-    private static readonly (string Status, string Title, string Icon, Color Accent)[] Stages =
+    private static readonly (string Status, string Title, Color Accent)[] Stages =
     {
-        ("Draft",    "Draft",    "📝", Color.FromArgb(100, 116, 139)),  // slate
-        ("Approved", "Approved", "✅", Color.FromArgb(  5, 150, 105)),  // emerald
+        ("Antri Dihitung",  "Antri Dihitung",  Color.FromArgb(217, 119,   6)),  // amber
+        ("Draft",           "Draft",           Color.FromArgb(100, 116, 139)),  // slate
+        ("Tunggu Approved", "Tunggu Approved", Color.FromArgb( 37,  99, 235)),  // blue
+        ("Approved",        "Approved",        Color.FromArgb(  5, 150, 105)),  // emerald
     };
 
     private const int ColPadding  = 10;
@@ -44,8 +46,8 @@ public class DashboardForm : Form
     private void BuildUI()
     {
         Text          = "Pipeline Estimasi";
-        Size          = new Size(1300, 720);
-        MinimumSize   = new Size(900, 580);
+        Size          = new Size(1500, 720);
+        MinimumSize   = new Size(1100, 580);
         StartPosition = FormStartPosition.CenterParent;
         BackColor     = AppTheme.Background;
 
@@ -71,7 +73,7 @@ public class DashboardForm : Form
         lblSummary = AppTheme.MakeLabel("", AppTheme.FontSmall, AppTheme.TextSecondary);
         lblSummary.AutoSize  = false;
         lblSummary.Dock      = DockStyle.Right;
-        lblSummary.Width     = 380;
+        lblSummary.Width     = 560;
         lblSummary.TextAlign = ContentAlignment.MiddleRight;
         lblSummary.Padding   = new Padding(0, 0, 16, 0);
 
@@ -112,7 +114,7 @@ public class DashboardForm : Form
     // ════════════════════════════════════════════════════════════════════
     //  BUILD ONE COLUMN
     // ════════════════════════════════════════════════════════════════════
-    private Panel BuildColumn(int idx, (string Status, string Title, string Icon, Color Accent) stage)
+    private Panel BuildColumn(int idx, (string Status, string Title, Color Accent) stage)
     {
         var col = new Panel
         {
@@ -132,23 +134,18 @@ public class DashboardForm : Form
         // ── Header ────────────────────────────────────────────────────────
         var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 54, BackColor = Color.Transparent };
 
-        var lblIcon = new Label
-        {
-            Text = stage.Icon, Font = new Font("Segoe UI Emoji", 16f),
-            Location = new Point(0, 8), AutoSize = true, ForeColor = stage.Accent
-        };
         var lblColTitle = new Label
         {
             Text = stage.Title, Font = AppTheme.FontBold, ForeColor = AppTheme.TextPrimary,
-            Location = new Point(30, 4), AutoSize = false, Width = 200, Height = 22
+            Location = new Point(0, 4), AutoSize = false, Width = 220, Height = 22
         };
         _colCount[idx] = new Label
         {
             Text = "0", Font = AppTheme.FontSmall, ForeColor = AppTheme.TextMuted,
-            Location = new Point(30, 26), AutoSize = true
+            Location = new Point(0, 26), AutoSize = true
         };
 
-        var headerControls = new List<Control> { lblIcon, lblColTitle, _colCount[idx] };
+        var headerControls = new List<Control> { lblColTitle, _colCount[idx] };
 
         // "＋ Tambah" button — right-aligned using Anchor
         if (idx == 0)
@@ -201,10 +198,12 @@ public class DashboardForm : Form
                 .ToList();
 
             // Update summary
-            var total    = ests.Count;
-            var draft    = ests.Count(e => e.Status == "Draft");
-            var approved = ests.Count(e => e.Status == "Approved");
-            lblSummary.Text = $"Total: {total} estimasi  |  Draft: {draft}  |  Approved: {approved}";
+            var total  = ests.Count;
+            var antri  = ests.Count(e => e.Status == "Antri Dihitung");
+            var draft  = ests.Count(e => e.Status == "Draft");
+            var tunggu = ests.Count(e => e.Status == "Tunggu Approved");
+            var ok     = ests.Count(e => e.Status == "Approved");
+            lblSummary.Text = $"Total: {total}  |  Antri: {antri}  |  Draft: {draft}  |  Tunggu: {tunggu}  |  Approved: {ok}";
 
             // Clear columns
             foreach (var f in _colFlows) f.Controls.Clear();
@@ -436,7 +435,7 @@ public class DashboardForm : Form
                 Company            = dlg.CompanyName,
                 Notes              = dlg.Notes,
                 EstimatedOrderDate = dlg.EstOrderDate,
-                Status             = "Draft",
+                Status             = "Antri Dihitung",
                 CreatedDate        = today.ToUniversalTime(),
                 SubTotal           = 0,
                 Margin             = 0,
@@ -450,7 +449,7 @@ public class DashboardForm : Form
             _context.SaveChanges();
 
             LoadData();
-            SetStatus($"'{dlg.ClientName}' ditambahkan ke Draft ({estNo}).");
+            SetStatus($"'{dlg.ClientName}' ditambahkan ke Antri Dihitung ({estNo}).");
         }
         catch (Exception ex)
         {

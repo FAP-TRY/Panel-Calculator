@@ -115,9 +115,11 @@ public static class AppTheme
 
     public static (Color fg, Color bg) GetStatusColor(string? status) => status?.Trim() switch
     {
-        "Approved" => (Success400, Color.FromArgb(8, 32, 22)),
-        "Draft"    => (Text3,      Color.FromArgb(18, 20, 36)),
-        _          => (Text3,      Color.FromArgb(18, 20, 36))
+        "Approved"        => (Success400,                       Color.FromArgb(  8,  32,  22)),  // emerald
+        "Tunggu Approved" => (Color.FromArgb( 96, 165, 250),   Color.FromArgb(  8,  22,  48)),  // blue
+        "Antri Dihitung"  => (Color.FromArgb(251, 191,  36),   Color.FromArgb( 40,  32,   8)),  // amber
+        "Draft"           => (Text3,                            Color.FromArgb( 18,  20,  36)),  // slate
+        _                 => (Text3,                            Color.FromArgb( 18,  20,  36))
     };
 
     // ════════════════════════════════════════════════════════
