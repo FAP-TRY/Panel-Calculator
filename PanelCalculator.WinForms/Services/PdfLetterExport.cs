@@ -182,13 +182,17 @@ public static class PdfLetterExport
         hdrTbl.AddCell(leftCell);
 
         // Right: Kepada block
+        // If company provided: "Kepada: [company]" + address, then "Up. [client]" centered
+        // If no company:       "Kepada Yth. [client]" + address (no Up. line)
+        bool hasCompany = !string.IsNullOrWhiteSpace(company);
         var rightCell = new Cell().SetBorder(Border.NO_BORDER);
         rightCell.Add(P("Kepada:", bold, 10, ColorDark).SetMarginBottom(1));
-        if (!string.IsNullOrWhiteSpace(company))
-            rightCell.Add(P(company, bold, 10, ColorDark).SetMarginBottom(0));
+        if (hasCompany)
+            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
+        else if (!string.IsNullOrWhiteSpace(clientName))
+            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
         if (!string.IsNullOrWhiteSpace(address))
         {
-            // Split address on commas or newlines for better readability
             foreach (var line in address.Split(new[]{'\n','\r'}, StringSplitOptions.RemoveEmptyEntries))
                 rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
         }
@@ -197,10 +201,12 @@ public static class PdfLetterExport
         hdrTbl.AddCell(rightCell);
         doc.Add(hdrTbl);
 
-        // ── "Up." contact person line (centered, bold) ────────────────────
-        if (!string.IsNullOrWhiteSpace(clientName))
+        // ── "Up." contact person line — only when company is set ─────────
+        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
             doc.Add(P($"Up. {clientName}", bold, 10, ColorDark)
                 .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(14));
+        else
+            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
 
         // ── Salutation ────────────────────────────────────────────────────
         doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));

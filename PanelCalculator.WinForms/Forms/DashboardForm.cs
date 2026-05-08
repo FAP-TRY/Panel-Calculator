@@ -8,7 +8,7 @@ namespace PanelCalculator.WinForms.Forms;
 
 /// <summary>
 /// Kanban pipeline estimasi.
-/// Kolom: Antri Hitung → Selesai Dihitung → Menunggu Approve → Sudah Diapprove → Won
+/// Kolom: Draft → Approved
 /// </summary>
 public class DashboardForm : Form
 {
@@ -18,10 +18,8 @@ public class DashboardForm : Form
     // Definisi kolom pipeline
     private static readonly (string Status, string Title, string Icon, Color Accent)[] Stages =
     {
-        ("Antri Hitung",     "Antri Hitung",     "⏳", Color.FromArgb(100, 116, 139)),  // slate
-        ("Selesai Dihitung", "Selesai Dihitung", "✅", Color.FromArgb(37,  99,  235)),  // blue
-        ("Menunggu Approve", "Menunggu Approve", "👀", Color.FromArgb(217, 119,   6)),  // amber
-        ("Sudah Diapprove",  "Sudah Diapprove",  "🎯", Color.FromArgb( 5,  150, 105)),  // emerald
+        ("Draft",    "Draft",    "📝", Color.FromArgb(100, 116, 139)),  // slate
+        ("Approved", "Approved", "✅", Color.FromArgb(  5, 150, 105)),  // emerald
     };
 
     private const int CardWidth   = 230;
@@ -172,7 +170,7 @@ public class DashboardForm : Form
             AutoSize  = true
         };
 
-        // "＋ Tambah" button only on the Antri Hitung column (idx == 0)
+        // "＋ Tambah" button only on the Draft column (idx == 0)
         var headerControls = new List<Control> { lblIcon, lblColTitle, _colCount[idx] };
         if (idx == 0)
         {
@@ -228,10 +226,10 @@ public class DashboardForm : Form
                 .ToList();
 
             // Update summary
-            var total     = ests.Count;
-            var antri     = ests.Count(e => e.Status == "Antri Hitung");
-            var diapprove = ests.Count(e => e.Status == "Sudah Diapprove");
-            lblSummary.Text = $"Total: {total} estimasi  |  Antri: {antri}  |  Diapprove: {diapprove}";
+            var total    = ests.Count;
+            var draft    = ests.Count(e => e.Status == "Draft");
+            var approved = ests.Count(e => e.Status == "Approved");
+            lblSummary.Text = $"Total: {total} estimasi  |  Draft: {draft}  |  Approved: {approved}";
 
             // Clear columns
             foreach (var f in _colFlows) f.Controls.Clear();
@@ -476,7 +474,7 @@ public class DashboardForm : Form
                 Company            = dlg.CompanyName,
                 Notes              = dlg.Notes,
                 EstimatedOrderDate = dlg.EstOrderDate,
-                Status             = "Antri Hitung",
+                Status             = "Draft",
                 CreatedDate        = today.ToUniversalTime(),
                 SubTotal           = 0,
                 Margin             = 0,
@@ -490,7 +488,7 @@ public class DashboardForm : Form
             _context.SaveChanges();
 
             LoadData();
-            SetStatus($"'{dlg.ClientName}' ditambahkan ke Antri Hitung ({estNo}).");
+            SetStatus($"'{dlg.ClientName}' ditambahkan ke Draft ({estNo}).");
         }
         catch (Exception ex)
         {
@@ -520,7 +518,7 @@ public class DashboardForm : Form
 }
 
 // ════════════════════════════════════════════════════════════════════════
-//  Dialog: Tambah Antri Hitung
+//  Dialog: Tambah Estimasi
 // ════════════════════════════════════════════════════════════════════════
 public class AddQueueDialog : Form
 {
@@ -537,7 +535,7 @@ public class AddQueueDialog : Form
 
     public AddQueueDialog()
     {
-        Text            = "Tambah Antri Hitung";
+        Text            = "Tambah Estimasi Draft";
         Size            = new Size(420, 340);
         MinimumSize     = new Size(380, 320);
         StartPosition   = FormStartPosition.CenterParent;

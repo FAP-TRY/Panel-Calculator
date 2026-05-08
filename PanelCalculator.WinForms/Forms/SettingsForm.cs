@@ -26,6 +26,7 @@ public class SettingsForm : Form
     private TextBox _txtSignerName     = null!;
     private TextBox _txtSignerTitle    = null!;
     private TextBox _txtOfferLocation  = null!;
+    private Label   _lblLetterheadStatus = null!;
 
     // Role-visibility
     private Panel  _pnlUserSection = null!;
@@ -110,7 +111,7 @@ public class SettingsForm : Form
         var pnlCompany = new Panel
         {
             Location  = new Point(20, 152),
-            Size      = new Size(640, 236),
+            Size      = new Size(640, 302),
             BackColor = Color.Transparent
         };
 
@@ -163,25 +164,39 @@ public class SettingsForm : Form
         AppTheme.StyleButton(btnSaveComp, AppTheme.Primary, Color.White);
         btnSaveComp.Click += BtnSaveCompany_Click;
 
+        // Row 5: Kop Surat (letterhead) image
+        var lblKop = AppTheme.MakeLabel("🖼  Gambar Kop Surat (Letterhead)", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lblKop.Location = new Point(0, 248); lblKop.AutoSize = true;
+
+        _lblLetterheadStatus = AppTheme.MakeLabel("", AppTheme.FontSmall, AppTheme.TextMuted);
+        _lblLetterheadStatus.Location = new Point(0, 268);
+        _lblLetterheadStatus.AutoSize  = false;
+        _lblLetterheadStatus.Width     = 450;
+
+        var btnBrowseLogo = new Button { Text = "📂 Pilih Gambar", Location = new Point(460, 264), Width = 140, Height = 28 };
+        AppTheme.StyleButton(btnBrowseLogo, AppTheme.Bg2, AppTheme.Text1);
+        btnBrowseLogo.Click += BtnBrowseLogo_Click;
+
         pnlCompany.Controls.AddRange(new Control[]
         {
             lblCompTitle, lblCompHint,
             lblCN, _txtCompanyName, lblCP, _txtCompanyPhone,
             lblCA, _txtCompanyAddr,
             lblSN, _txtSignerName, lblST, _txtSignerTitle,
-            lblOL, _txtOfferLocation, btnSaveComp
+            lblOL, _txtOfferLocation, btnSaveComp,
+            lblKop, _lblLetterheadStatus, btnBrowseLogo
         });
 
-        var sep2 = new Panel { Location = new Point(20, 152 + 236 + 8), Height = 1, Width = 640, BackColor = AppTheme.Border };
+        var sep2 = new Panel { Location = new Point(20, 152 + 302 + 8), Height = 1, Width = 640, BackColor = AppTheme.Border };
 
         // ─────────────────────────────────────────────────────────────────
         //  SECTION 3: Manajemen Pengguna (Admin only — hidden for Operators)
         //  Controls inside _pnlUserSection use y coords relative to the panel.
         // ─────────────────────────────────────────────────────────────────
-        // Section 2 bottom: y=152+236=388. sep2 at y=396. Section 3 at y=408.
+        // Section 2 bottom: y=152+302=454. sep2 at y=462. Section 3 at y=474.
         _pnlUserSection = new Panel
         {
-            Location    = new Point(20, 408),
+            Location    = new Point(20, 474),
             Size        = new Size(640, 352),
             BackColor   = Color.Transparent
         };
@@ -261,7 +276,7 @@ public class SettingsForm : Form
             UpdateProductCount();
             ReloadUsers();
             LoadLastImportPath();
-            LoadCompanySettings();
+            LoadCompanySettings();   // also calls RefreshLetterheadStatus internally
             ApplyRoleVisibility();
         };
     }
@@ -278,18 +293,18 @@ public class SettingsForm : Form
         if (isAdmin)
         {
             // Full height — Sections 1+2+3 visible
-            // _pnlUserSection at y=408, height=352 → bottom at 760
-            _btnClose.Location = new Point(570, 408 + 352 + 10);  // y ≈ 770
-            Size        = new Size(720, 880);
-            MinimumSize = new Size(640, 700);
+            // _pnlUserSection at y=474, height=352 → bottom at 826
+            _btnClose.Location = new Point(570, 474 + 352 + 10);  // y ≈ 836
+            Size        = new Size(720, 950);
+            MinimumSize = new Size(640, 750);
         }
         else
         {
             // Compact height — Sections 1+2 only (no user management)
-            // Company section ends at y=152+236=388. "Tutup" below with gap.
-            _btnClose.Location = new Point(570, 400);
-            Size        = new Size(720, 556);
-            MinimumSize = new Size(640, 440);
+            // Company section ends at y=152+302=454. "Tutup" below with gap.
+            _btnClose.Location = new Point(570, 468);
+            Size        = new Size(720, 610);
+            MinimumSize = new Size(640, 500);
         }
     }
 
@@ -364,6 +379,73 @@ public class SettingsForm : Form
             _txtOfferLocation.Text  = Get("OfferLocation",  "");
         }
         catch { }
+        RefreshLetterheadStatus();
+    }
+
+    private void RefreshLetterheadStatus()
+    {
+        var exeDir = AppDomain.CurrentDomain.BaseDirectory;
+        foreach (var name in new[] { "letterhead.png", "letterhead.jpg", "kopsurat.png", "kopsurat.jpg" })
+        {
+            var path = Path.Combine(exeDir, name);
+            if (File.Exists(path))
+            {
+                _lblLetterheadStatus.Text      = $"✔  Aktif: {name}";
+                _lblLetterheadStatus.ForeColor = AppTheme.Success;
+                return;
+            }
+        }
+        // also check settings path
+        var settingPath = _context.Settings.Find("LetterheadImagePath")?.SettingValue;
+        if (!string.IsNullOrWhiteSpace(settingPath) && File.Exists(settingPath))
+        {
+            _lblLetterheadStatus.Text      = $"✔  Aktif: {Path.GetFileName(settingPath)}";
+            _lblLetterheadStatus.ForeColor = AppTheme.Success;
+        }
+        else
+        {
+            _lblLetterheadStatus.Text      = "Belum ada gambar kop surat — klik Pilih Gambar untuk mengatur.";
+            _lblLetterheadStatus.ForeColor = AppTheme.TextMuted;
+        }
+    }
+
+    private void BtnBrowseLogo_Click(object? sender, EventArgs e)
+    {
+        using var ofd = new OpenFileDialog
+        {
+            Title  = "Pilih Gambar Kop Surat",
+            Filter = "Image Files (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|All Files (*.*)|*.*",
+        };
+        if (ofd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var exeDir  = AppDomain.CurrentDomain.BaseDirectory;
+            var destExt = Path.GetExtension(ofd.FileName).ToLowerInvariant();
+            var destName = destExt == ".png" ? "letterhead.png" : "letterhead.jpg";
+            var destPath = Path.Combine(exeDir, destName);
+
+            // Remove old letterhead files first
+            foreach (var old in new[] { "letterhead.png", "letterhead.jpg", "kopsurat.png", "kopsurat.jpg" })
+            {
+                var p = Path.Combine(exeDir, old);
+                if (File.Exists(p)) try { File.Delete(p); } catch { }
+            }
+
+            File.Copy(ofd.FileName, destPath, overwrite: true);
+            UpsertSetting("LetterheadImagePath", destPath);
+            _context.SaveChanges();
+
+            RefreshLetterheadStatus();
+            MessageBox.Show(
+                $"Kop surat berhasil diperbarui.\nDisimpan sebagai: {destName}\n\nAkan aktif pada export PDF berikutnya.",
+                "Berhasil", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal menyalin gambar:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void BtnSaveCompany_Click(object? sender, EventArgs e)
