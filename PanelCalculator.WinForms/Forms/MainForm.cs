@@ -1257,9 +1257,25 @@ public partial class MainForm : Form
         }
 
         var today     = DateTime.Now;
-        var existing  = await _estimationRepo.GetByDateRangeAsync(today.Date, today.Date.AddDays(1));
-        var seq       = (existing.Count() + 1).ToString("D3");
-        var estNumber = $"EST-{today:yyyyMMdd}-{seq}";
+        var todayStr  = today.ToString("yyyyMMdd");
+        var prefix    = $"EST-{todayStr}-";
+
+        // Use UTC boundaries so the date range matches CreatedDate (stored in UTC)
+        var utcStart  = today.Date.ToUniversalTime();
+        var utcEnd    = today.Date.AddDays(1).ToUniversalTime();
+        var existing  = await _estimationRepo.GetByDateRangeAsync(utcStart, utcEnd);
+
+        // MAX-based sequence: safe even when previous estimations are deleted
+        var maxSeq = existing
+            .Select(e =>
+            {
+                if (!e.EstimationNumber.StartsWith(prefix)) return 0;
+                return int.TryParse(e.EstimationNumber[prefix.Length..], out int n) ? n : 0;
+            })
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var estNumber = $"{prefix}{(maxSeq + 1):D3}";
 
         var (subtotal, _, _, _, totalMarginAmt, ppnAmt, pphAmt, total) = CalcAll();
 

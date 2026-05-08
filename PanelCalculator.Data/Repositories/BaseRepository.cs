@@ -28,9 +28,24 @@ public abstract class BaseRepository<T> : IRepository<T> where T : class
         return entity;
     }
 
+    /// <summary>
+    /// Updates only the scalar properties of <paramref name="entity"/>.
+    /// Uses Entry().State instead of Set().Update() to avoid cascading
+    /// Modified/Added state onto navigation properties (e.g. Products),
+    /// which would trigger UNIQUE constraint violations on related tables.
+    /// </summary>
     public virtual async Task<T> UpdateAsync(T entity)
     {
-        _context.Set<T>().Update(entity);
+        var entry = _context.Entry(entity);
+
+        // If already tracked by this context — just mark it modified so
+        // EF Core's change-detection picks up the changed scalar properties.
+        // If it arrived detached (e.g. from a different context scope) —
+        // attach it and mark modified, still without touching navigation props.
+        if (entry.State == EntityState.Detached)
+            entry.State = EntityState.Modified;
+        // else: entity is Unchanged/Modified — SaveChanges will flush it.
+
         await SaveChangesAsync();
         return entity;
     }
