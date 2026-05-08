@@ -27,7 +27,10 @@ public partial class MainForm : Form
     private bool    _refreshing    = false; // re-entrancy guard
 
     private static readonly string[] Sections =
-        { "Material Utama", "Material Pendukung", "Material Lainnya" };
+    {
+        "Material Utama", "Material Pendukung", "Material Lainnya",
+        "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
+    };
 
     // ── UI Controls ──────────────────────────────────────────────────────
     private DataGridView dgvProducts = null!;
@@ -377,11 +380,17 @@ public partial class MainForm : Form
         // Update background color to match selected section (dark tinted variants)
         cmbTargetSection.SelectedIndexChanged += (s, e) =>
         {
-            cmbTargetSection.BackColor = cmbTargetSection.SelectedIndex switch
+            cmbTargetSection.BackColor = cmbTargetSection.SelectedItem?.ToString() switch
             {
-                1 => Color.FromArgb(38, 30, 10),   // Material Pendukung – dark amber tint
-                2 => Color.FromArgb(10, 32, 22),   // Material Lainnya   – dark green tint
-                _ => AppTheme.Bg2                  // Material Utama     – default dark
+                "Material Pendukung" => Color.FromArgb(38,  30,  10),  // amber
+                "Material Lainnya"   => Color.FromArgb(10,  32,  22),  // green
+                "Box"                => Color.FromArgb(38,  20,   6),  // orange
+                "Incoming"           => Color.FromArgb(28,  16,  48),  // purple
+                "Outgoing"           => Color.FromArgb(48,  10,  16),  // rose
+                "Trailer"            => Color.FromArgb( 6,  30,  38),  // cyan
+                "Karoseri"           => Color.FromArgb(40,  34,   6),  // yellow
+                "Jasa"               => Color.FromArgb(38,  10,  34),  // fuchsia
+                _                    => AppTheme.Bg2
             };
         };
 
@@ -409,7 +418,8 @@ public partial class MainForm : Form
             DisplayStyle = DataGridViewComboBoxDisplayStyle.Nothing,
             FlatStyle    = FlatStyle.Flat
         };
-        colSection.Items.AddRange("", "Material Utama", "Material Pendukung", "Material Lainnya");
+        colSection.Items.AddRange("", "Material Utama", "Material Pendukung", "Material Lainnya",
+            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa");
         dgvItems.Columns.Add(colSection);
 
         dgvItems.Columns.Add(new DataGridViewTextBoxColumn
@@ -1606,25 +1616,43 @@ public partial class MainForm : Form
     // ── Section color helpers (dark-pro palette) ─────────────────────────
     private static Color SectionHeaderColor(string section) => section switch
     {
-        "Material Utama"     => Color.FromArgb(15,  22, 55),   // dark navy-blue tint
-        "Material Pendukung" => Color.FromArgb(32,  22,  8),   // dark amber tint
-        "Material Lainnya"   => Color.FromArgb( 8,  28, 16),   // dark green tint
+        "Material Utama"     => Color.FromArgb(15,  22,  55),  // navy
+        "Material Pendukung" => Color.FromArgb(32,  22,   8),  // amber
+        "Material Lainnya"   => Color.FromArgb( 8,  28,  16),  // green
+        "Box"                => Color.FromArgb(38,  20,   6),  // orange
+        "Incoming"           => Color.FromArgb(28,  16,  48),  // purple
+        "Outgoing"           => Color.FromArgb(48,  10,  16),  // rose
+        "Trailer"            => Color.FromArgb( 6,  30,  38),  // cyan
+        "Karoseri"           => Color.FromArgb(40,  34,   6),  // yellow
+        "Jasa"               => Color.FromArgb(38,  10,  34),  // fuchsia
         _                    => AppTheme.Bg2
     };
 
     private static Color SectionRowColor(string section) => section switch
     {
-        "Material Utama"     => AppTheme.Bg1,                  // (11, 16, 32)
-        "Material Pendukung" => Color.FromArgb(14, 12,  6),    // very dark amber
-        "Material Lainnya"   => Color.FromArgb( 7, 13, 10),    // very dark green
+        "Material Utama"     => AppTheme.Bg1,
+        "Material Pendukung" => Color.FromArgb(14,  12,   6),
+        "Material Lainnya"   => Color.FromArgb( 7,  13,  10),
+        "Box"                => Color.FromArgb(16,  10,   4),
+        "Incoming"           => Color.FromArgb(10,   6,  20),
+        "Outgoing"           => Color.FromArgb(20,   5,   8),
+        "Trailer"            => Color.FromArgb( 4,  14,  18),
+        "Karoseri"           => Color.FromArgb(17,  14,   4),
+        "Jasa"               => Color.FromArgb(16,   5,  14),
         _                    => AppTheme.Bg1
     };
 
     private static Color SectionHeaderForeColor(string section) => section switch
     {
-        "Material Utama"     => Color.FromArgb(125, 210, 255), // light sky-blue
+        "Material Utama"     => Color.FromArgb(125, 210, 255), // sky-blue
         "Material Pendukung" => Color.FromArgb(251, 191,  36), // amber-300
         "Material Lainnya"   => Color.FromArgb( 52, 211, 153), // emerald-300
+        "Box"                => Color.FromArgb(253, 186, 116), // orange-300
+        "Incoming"           => Color.FromArgb(196, 181, 253), // violet-300
+        "Outgoing"           => Color.FromArgb(253, 164, 175), // rose-300
+        "Trailer"            => Color.FromArgb(103, 232, 249), // cyan-300
+        "Karoseri"           => Color.FromArgb(253, 224,  71), // yellow-300
+        "Jasa"               => Color.FromArgb(240, 171, 252), // fuchsia-300
         _                    => AppTheme.Text2
     };
 

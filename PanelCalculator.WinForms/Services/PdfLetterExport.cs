@@ -197,7 +197,8 @@ public static class PdfLetterExport
             reg, 10, ColorDark).SetMarginBottom(12));
 
         // ── Price summary table ───────────────────────────────────────────
-        var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya" };
+        var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
+            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
         var sectionTotals = allSections
             .Select(s => (Name: s, Total: items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
             .Where(x => x.Total > 0)
@@ -291,7 +292,8 @@ public static class PdfLetterExport
         doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
             .SetStrokeColor(ColorDark).SetMarginBottom(14));
 
-        var sections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya" };
+        var sections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
+            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
         int panelNo  = 0;
 
         foreach (var sec in sections)
