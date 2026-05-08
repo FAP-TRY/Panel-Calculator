@@ -24,8 +24,11 @@ public class UserManagementForm : Form
     {
         Text            = "Manajemen Pengguna";
         BackColor       = AppTheme.Background;
-        FormBorderStyle = FormBorderStyle.None;
-        Dock            = DockStyle.Fill;
+        FormBorderStyle = FormBorderStyle.Sizable;
+        Size            = new Size(920, 620);
+        MinimumSize     = new Size(720, 480);
+        StartPosition   = FormStartPosition.CenterParent;
+        MaximizeBox     = false;
 
         // ── Top bar ───────────────────────────────────────────────────────
         var pnlTop = new Panel
@@ -100,6 +103,8 @@ public class UserManagementForm : Form
         Controls.Add(pnlBottom);
 
         dgv.CellDoubleClick += (s, e) => { if (e.RowIndex >= 0) EditUser(GetSelectedUser()); };
+
+        Load += (s, e) => ReloadAsync();
     }
 
     // ════════════════════════════════════════════════════════════════════
