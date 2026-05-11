@@ -272,17 +272,20 @@ public class ShellForm : Form
 
         if (confirm != DialogResult.Yes) return;
 
-        // Progress dialog
+        // Progress dialog — ControlBox=false removes the X button so user cannot
+        // accidentally close it mid-download (which would cause silent autoclose later)
         using var prog = new Form
         {
             Text            = "Mengunduh Pembaruan...",
-            Size            = new Size(420, 140),
+            Size            = new Size(440, 150),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             StartPosition   = FormStartPosition.CenterParent,
-            MaximizeBox     = false, MinimizeBox = false,
+            MaximizeBox     = false,
+            MinimizeBox     = false,
+            ControlBox      = false,   // ← removes X button entirely
             BackColor       = AppTheme.Background
         };
-        var bar = new ProgressBar { Dock = DockStyle.Top, Height = 24, Minimum = 0, Maximum = 100 };
+        var bar = new ProgressBar { Dock = DockStyle.Top, Height = 28, Minimum = 0, Maximum = 100 };
         var lbl = new Label
         {
             Text      = "Memulai download...",
@@ -295,25 +298,26 @@ public class ShellForm : Form
         prog.Controls.Add(bar);
         prog.Show(this);
 
+        // Progress<T> already marshals the callback to the UI thread via
+        // SynchronizationContext — no Application.DoEvents() needed (and DoEvents
+        // is dangerous here because it can process unrelated close/resize events
+        // that put the form into an inconsistent state mid-download).
         var progress = new Progress<(int Percent, string Status)>(p =>
         {
-            if (!prog.IsDisposed)
-            {
-                bar.Value  = Math.Clamp(p.Percent, 0, 100);
-                lbl.Text   = p.Status;
-                Application.DoEvents();
-            }
+            if (prog.IsDisposed) return;
+            bar.Value = Math.Clamp(p.Percent, 0, 100);
+            lbl.Text  = p.Status;
         });
 
         try
         {
             _btnUpdate.Enabled = false;
             await UpdateService.DownloadAndApplyAsync(_pendingUpdate, progress);
-            // App will exit from within DownloadAndApplyAsync → this line never reached
+            // DownloadAndApplyAsync calls Application.Exit() on success → never reaches here
         }
         catch (Exception ex)
         {
-            prog.Close();
+            if (!prog.IsDisposed) prog.Close();
             _btnUpdate.Enabled = true;
             MessageBox.Show(
                 $"Download gagal:\n{ex.Message}\n\nSilakan download manual dari:\n{_pendingUpdate.HtmlUrl}",
