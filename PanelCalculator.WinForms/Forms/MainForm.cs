@@ -352,10 +352,11 @@ public partial class MainForm : Form
         dgvProducts = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgvProducts);
         dgvProducts.ReadOnly = true;
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColRef",       HeaderText = "Kode",        Width = 100, FillWeight = 25 });
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColName",      HeaderText = "Nama Produk", FillWeight = 45 });
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColVendor",    HeaderText = "Merk",        FillWeight = 18 });
-        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColPrice",     HeaderText = "Harga (Rp)",  FillWeight = 28, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColRef",       HeaderText = "Kode",        Width = 100, FillWeight = 20 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColName",      HeaderText = "Nama Produk", FillWeight = 35 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColSpecs",     HeaderText = "Spesifikasi", FillWeight = 30, DefaultCellStyle = { ForeColor = Color.FromArgb(148, 163, 184) } });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColVendor",    HeaderText = "Merk",        FillWeight = 14 });
+        dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColPrice",     HeaderText = "Harga (Rp)",  FillWeight = 22, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
         dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColYear",      HeaderText = "Thn",         Width = 46,      DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleCenter, ForeColor = Color.FromArgb(100, 116, 139) } });
         dgvProducts.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColProductId", Visible    = false });
 
@@ -892,7 +893,8 @@ public partial class MainForm : Form
             var displayName = p.StockStatus == 2 ? $"{p.ProductName}  [Indent]" : p.ProductName;
             var vendorShort = p.Vendor?.Replace("Schneider Electric", "Schneider") ?? "";
             var yearStr     = p.PriceYear.HasValue ? p.PriceYear.Value.ToString() : "—";
-            dgvProducts.Rows.Add(p.ReferenceCode, displayName, vendorShort, p.Price, yearStr, p.ProductId);
+            var specsText   = p.Specifications ?? "";
+            dgvProducts.Rows.Add(p.ReferenceCode, displayName, specsText, vendorShort, p.Price, yearStr, p.ProductId);
         }
         SetStatus($"{dgvProducts.Rows.Count} produk ditemukan.");
     }
