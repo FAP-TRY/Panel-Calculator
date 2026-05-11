@@ -25,6 +25,7 @@ public partial class MainForm : Form
     private decimal _taxPercent    = 11m;   // PPN
     private decimal _pphPercent    = 0m;    // PPh
     private bool    _refreshing    = false; // re-entrancy guard
+    private bool    _isSaving      = false; // prevent double-save
 
     /// <summary>Sections explicitly added by the user via "Tambah Grup".</summary>
     private readonly List<string> _activeSections = new();
@@ -1399,6 +1400,9 @@ public partial class MainForm : Form
 
     private async void BtnSave_Click(object? sender, EventArgs e)
     {
+        // Guard: prevent double-save (double-click, rapid retry, etc.)
+        if (_isSaving) return;
+
         if (_currentItems.Count == 0)
         {
             MessageBox.Show("Tambahkan minimal satu produk sebelum menyimpan.", "Perhatian",
@@ -1415,6 +1419,11 @@ public partial class MainForm : Form
             return;
         }
 
+        _isSaving      = true;
+        btnSave.Enabled = false;
+
+        try
+        {
         var today     = DateTime.Now;
         var todayStr  = today.ToString("yyyyMMdd");
         var prefix    = $"EST-{todayStr}-";
@@ -1434,7 +1443,16 @@ public partial class MainForm : Form
             .DefaultIfEmpty(0)
             .Max();
 
-        var estNumber = $"{prefix}{(maxSeq + 1):D3}";
+        // Retry loop: increment sequence until a unique number is found
+        string estNumber;
+        int seq = maxSeq + 1;
+        while (true)
+        {
+            estNumber = $"{prefix}{seq:D3}";
+            bool taken = _context.Estimations.Any(x => x.EstimationNumber == estNumber);
+            if (!taken) break;
+            seq++;
+        }
 
         var (subtotal, _, _, _, totalMarginAmt, ppnAmt, pphAmt, total) = CalcAll();
 
@@ -1479,6 +1497,17 @@ public partial class MainForm : Form
         await _estimationRepo.AddAsync(estimation);
         MessageBox.Show($"Estimasi {estNumber} berhasil disimpan!", "Tersimpan", MessageBoxButtons.OK, MessageBoxIcon.Information);
         SetStatus($"✓ Disimpan: {estNumber} untuk {txtClientName.Text.Trim()}");
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal menyimpan estimasi:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _isSaving       = false;
+            btnSave.Enabled = true;
+        }
     }
 
     private void BtnExport_Click(object? sender, EventArgs e)
