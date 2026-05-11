@@ -3,7 +3,7 @@
 ; ============================================================
 
 #define AppName      "Kalkulator Panel Tritunggal Swarna"
-#define AppVersion   "1.0"
+#define AppVersion   "1.2.0"
 #define AppPublisher "PT Tritunggal Swarna"
 #define AppExeName   "PanelCalculator.WinForms.exe"
 #define AppId        "{{A3B7C2D1-1234-4E56-9F0A-TTS2025PANEL}"
@@ -17,7 +17,7 @@ AppPublisherURL=https://tritunggalswarna.com
 DefaultDirName={autopf}\TritunggalSwarna\KalkulatorPanel
 DefaultGroupName={#AppName}
 OutputDir=C:\Projects\Panel Calculator\Installer
-OutputBaseFilename=KalkulatorPanel-TTS-v1.0-Setup
+OutputBaseFilename=KalkulatorPanel-TTS-v1.2.0-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
