@@ -93,11 +93,15 @@ public class EstimationHistoryForm : Form
         AppTheme.StyleButton(btnExport, AppTheme.Brand500, Color.White);
         btnExport.Click += BtnExport_Click;
 
+        var btnExportCsv = new Button { Text = "📊 Export CSV", Location = new Point(580, 10), Width = 130, Height = 36 };
+        AppTheme.StyleButton(btnExportCsv, AppTheme.Bg3, AppTheme.Text1);
+        btnExportCsv.Click += BtnExportCsv_Click;
+
         var lblHint = AppTheme.MakeLabel("Klik 2x untuk membuka ke kalkulator.", AppTheme.FontSmall, AppTheme.TextMuted);
-        lblHint.Location = new Point(585, 18);
+        lblHint.Location = new Point(724, 18);
         lblHint.AutoSize = true;
 
-        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, lblHint });
+        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnExportCsv, lblHint });
 
         Controls.Add(dgv);
         Controls.Add(pnlFilter);
@@ -278,6 +282,89 @@ public class EstimationHistoryForm : Form
                 await Task.Delay(30_000);
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             });
+        }
+    }
+
+    private void BtnExportCsv_Click(object? sender, EventArgs e)
+    {
+        if (dgv.CurrentRow == null) { MessageBox.Show("Pilih estimasi terlebih dahulu.", "Perhatian", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+        if (dgv.CurrentRow.Cells["ColId"].Value is not int id) return;
+        var est = _allEstimations.FirstOrDefault(x => x.EstimationId == id);
+        if (est == null) return;
+
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Export Estimasi ke CSV",
+            Filter     = "CSV Files (*.csv)|*.csv",
+            FileName   = $"Estimasi_{est.EstimationNumber}_{est.ClientName}_{DateTime.Now:yyyyMMdd}.csv",
+            DefaultExt = "csv"
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var ic = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+            var sb = new System.Text.StringBuilder();
+
+            // Info header
+            sb.AppendLine($"Nomor Estimasi,{est.EstimationNumber}");
+            sb.AppendLine($"Nomor Surat,{est.NomorSurat}");
+            sb.AppendLine($"Klien,\"{est.ClientName}\"");
+            sb.AppendLine($"Perusahaan,\"{est.Company}\"");
+            sb.AppendLine($"Tanggal,{est.CreatedDate.ToLocalTime():dd/MM/yyyy}");
+            sb.AppendLine($"Perihal,\"{est.ProjectName}\"");
+            sb.AppendLine($"Status,{est.Status}");
+            sb.AppendLine();
+
+            // Column headers
+            sb.AppendLine("No,Seksi,Kode Referensi,Nama Produk,Merek/Vendor,Satuan,Qty,Harga Satuan (Rp),Total (Rp)");
+
+            int no = 0;
+            foreach (var d in est.Details)
+            {
+                no++;
+                var name   = (d.Product?.ProductName ?? "—").Replace("\"", "\"\"");
+                var code   = (d.Product?.ReferenceCode ?? "—").Replace("\"", "\"\"");
+                var vendor = (d.Product?.Vendor ?? "").Replace("\"", "\"\"");
+                var sec    = string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section;
+                sb.AppendLine(
+                    $"{no}," +
+                    $"\"{sec}\"," +
+                    $"\"{code}\"," +
+                    $"\"{name}\"," +
+                    $"\"{vendor}\"," +
+                    $"{d.Satuan}," +
+                    $"{d.Quantity}," +
+                    $"{d.UnitPrice.ToString("F0", ic)}," +
+                    $"{d.LineTotalPrice.ToString("F0", ic)}");
+            }
+
+            // Summary
+            sb.AppendLine();
+            sb.AppendLine($",,,,,,,Subtotal,{est.SubTotal.ToString("F0", ic)}");
+            if (est.Margin > 0)
+                sb.AppendLine($",,,,,,,Margin,{est.Margin.ToString("F0", ic)}");
+            if (est.ShippingCost > 0)
+                sb.AppendLine($",,,,,,,Ongkir,{est.ShippingCost.ToString("F0", ic)}");
+            if (est.Tax > 0)
+                sb.AppendLine($",,,,,,,PPN,{est.Tax.ToString("F0", ic)}");
+            if (est.PPh > 0)
+                sb.AppendLine($",,,,,,,PPh,{est.PPh.ToString("F0", ic)}");
+            sb.AppendLine($",,,,,,,TOTAL,{est.TotalPrice.ToString("F0", ic)}");
+
+            File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
+
+            var open = MessageBox.Show(
+                $"CSV berhasil dibuat ({no} item).\nBuka folder sekarang?",
+                "Export Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"/select,\"{sfd.FileName}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export CSV:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

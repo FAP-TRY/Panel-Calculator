@@ -115,28 +115,57 @@ public partial class MainForm : Form
         var toolbar = new TableLayoutPanel
         {
             Dock        = DockStyle.Top,
-            Height      = 60,
+            Height      = 64,
             ColumnCount = 2,
             RowCount    = 1,
             BackColor   = AppTheme.BgHeader,
             Padding     = new Padding(0),
             Margin      = new Padding(0)
         };
-        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));       // title
+        toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));       // logo + title
         toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f)); // buttons
 
-        var lblAppTitle = new Label
+        // ── Logo + Company title panel ────────────────────────────────────
+        var pnlBrand = new Panel
         {
-            Text      = "⚡ Kalkulator Panel",
-            Font      = AppTheme.FontTitle,
-            ForeColor = Color.White,
-            AutoSize  = false,
-            Width     = 220,
+            BackColor = Color.Transparent,
+            Width     = 420,
             Dock      = DockStyle.Fill,
-            TextAlign = ContentAlignment.TopLeft,
-            Padding   = new Padding(16, 14, 0, 0)
         };
-        toolbar.Controls.Add(lblAppTitle, 0, 0);
+
+        var pbToolLogo = new PictureBox
+        {
+            Size     = new Size(48, 48),
+            Location = new Point(12, 8),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.Transparent,
+        };
+        using (var stream = typeof(MainForm).Assembly
+                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
+        {
+            if (stream != null)
+                pbToolLogo.Image = Image.FromStream(stream);
+        }
+
+        var lblCompany = new Label
+        {
+            Text      = "TRITUNGGAL SWARNA",
+            Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
+            ForeColor = Color.White,
+            AutoSize  = true,
+            Location  = new Point(68, 10),
+        };
+        var lblSub = new Label
+        {
+            Text      = "PANEL BUILDER & CARROSSERIE",
+            Font      = new Font("Segoe UI", 7.5f, FontStyle.Regular),
+            ForeColor = Color.FromArgb(180, 200, 220),
+            AutoSize  = true,
+            Location  = new Point(69, 32),
+        };
+
+        pnlBrand.Controls.AddRange(new Control[] { pbToolLogo, lblCompany, lblSub });
+        toolbar.Controls.Add(pnlBrand, 0, 0);
 
         // Buttons right-aligned inside a fill panel
         var btnAreaPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
@@ -1560,6 +1589,91 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Gagal membuat PDF:\n{ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // ── Export Estimasi → CSV ─────────────────────────────────────────────
+    private void BtnExportEstimationCsv_Click(object? sender, EventArgs e)
+    {
+        if (_currentItems.Count == 0)
+        {
+            MessageBox.Show("Tidak ada item untuk di-export.", "Perhatian",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        var estNo  = !string.IsNullOrWhiteSpace(txtNomorSurat.Text)
+                     ? txtNomorSurat.Text.Trim() : $"DRAFT-{DateTime.Now:yyyyMMdd}";
+        var client = !string.IsNullOrWhiteSpace(txtClientName.Text)
+                     ? txtClientName.Text.Trim() : "klien";
+
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Export Estimasi ke CSV",
+            Filter     = "CSV Files (*.csv)|*.csv",
+            FileName   = $"Estimasi_{estNo}_{client}_{DateTime.Now:yyyyMMdd}.csv",
+            DefaultExt = "csv"
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            // Header info
+            sb.AppendLine($"Nomor Estimasi,{estNo}");
+            sb.AppendLine($"Klien,\"{client}\"");
+            sb.AppendLine($"Perusahaan,\"{txtCompany.Text.Trim()}\"");
+            sb.AppendLine($"Tanggal,{dtpCreatedDate.Value:dd/MM/yyyy}");
+            sb.AppendLine($"Perihal,\"{txtProjectName.Text.Trim()}\"");
+            sb.AppendLine();
+
+            // Column headers
+            sb.AppendLine("No,Seksi,Kode Referensi,Nama Produk,Merek/Vendor,Satuan,Qty,Harga Satuan (Rp),Total (Rp)");
+
+            int no = 0;
+            foreach (var item in _currentItems)
+            {
+                no++;
+                var name = item.ProductName.Replace("\"", "\"\"");
+                var code = item.ReferenceCode.Replace("\"", "\"\"");
+                var vendor = item.Vendor.Replace("\"", "\"\"");
+                sb.AppendLine(
+                    $"{no}," +
+                    $"\"{item.Section}\"," +
+                    $"\"{code}\"," +
+                    $"\"{name}\"," +
+                    $"\"{vendor}\"," +
+                    $"{item.Satuan}," +
+                    $"{item.Quantity}," +
+                    $"{item.UnitPrice:F0}," +
+                    $"{item.LineTotal:F0}");
+            }
+
+            // Summary
+            var (subtotal, _, _, _, totalMarginAmt, ppnAmt, _, total) = CalcAll();
+            sb.AppendLine();
+            sb.AppendLine($",,,,,,,,");
+            sb.AppendLine($",,,,,,,Subtotal,{subtotal:F0}");
+            if (totalMarginAmt > 0)
+                sb.AppendLine($",,,,,,,Margin,{totalMarginAmt:F0}");
+            if (ppnAmt > 0)
+                sb.AppendLine($",,,,,,,PPN,{ppnAmt:F0}");
+            sb.AppendLine($",,,,,,,TOTAL,{total:F0}");
+
+            File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
+            SetStatus($"✓ CSV disimpan: {Path.GetFileName(sfd.FileName)} ({no} item)");
+
+            var open = MessageBox.Show(
+                $"CSV berhasil dibuat ({no} item).\nBuka folder sekarang?",
+                "Export Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"/select,\"{sfd.FileName}\"") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export CSV:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

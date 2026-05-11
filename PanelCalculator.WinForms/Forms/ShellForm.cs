@@ -63,16 +63,27 @@ public class ShellForm : Form
             e.Graphics.DrawLine(pen, 0, pnlTopBar.Height - 1, pnlTopBar.Width, pnlTopBar.Height - 1);
         };
 
+        // ── Logo image in top bar ────────────────────────────────────────
+        var pbTopLogo = new PictureBox
+        {
+            Size     = new Size(32, 32),
+            Location = new Point(12, (pnlTopBar.Height - 32) / 2),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.Transparent,
+        };
+        using (var stream = typeof(ShellForm).Assembly
+                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
+        {
+            if (stream != null)
+                pbTopLogo.Image = Image.FromStream(stream);
+        }
+
         var lblAppTitle = new Label
         {
-            Text      = "⚡  Kalkulator Panel Tritunggal Swarna",
-            Font      = new Font("Segoe UI", 12f, FontStyle.Bold),
-            ForeColor = Color.White,
+            Text      = "",
             AutoSize  = false,
             Dock      = DockStyle.Left,
-            Width     = 420,
-            TextAlign = ContentAlignment.TopLeft,
-            Padding   = new Padding(16, 12, 0, 0)
+            Width     = 52,
         };
 
         // ── Right-side buttons in top bar ────────────────────────────────
@@ -168,6 +179,7 @@ public class ShellForm : Form
 
         pnlTopBar.Controls.Add(pnlRight);
         pnlTopBar.Controls.Add(lblAppTitle);
+        pnlTopBar.Controls.Add(pbTopLogo);
 
         // ── Content area ─────────────────────────────────────────────────
         pnlContent = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Background };

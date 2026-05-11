@@ -198,15 +198,12 @@ public static class PdfLetterExport
         }
         if (!string.IsNullOrWhiteSpace(contactPhone))
             rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
+        // "Up." stays inside the right cell — aligned with Kepada block
+        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
+            rightCell.Add(P($"\nUp. {clientName}", bold, 10, ColorDark).SetMarginBottom(0));
         hdrTbl.AddCell(rightCell);
         doc.Add(hdrTbl);
-
-        // ── "Up." contact person line — only when company is set ─────────
-        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
-            doc.Add(P($"Up. {clientName}", bold, 10, ColorDark)
-                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(14));
-        else
-            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
+        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
 
         // ── Salutation ────────────────────────────────────────────────────
         doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));

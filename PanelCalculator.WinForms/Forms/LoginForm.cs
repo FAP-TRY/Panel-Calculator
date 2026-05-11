@@ -83,28 +83,22 @@ public class LoginForm : Form
         int y = 36;
 
         // ── Logo mark ─────────────────────────────────────────────────────
-        var pnlMark = new Panel
+        const int logoSize = 80;
+        var pbLogo = new PictureBox
         {
-            Size     = new Size(64, 64),
-            Location = new Point((card.Width - 64) / 2, y),
-            BackColor = AppTheme.Brand500,
-            Cursor   = Cursors.Default
+            Size     = new Size(logoSize, logoSize),
+            Location = new Point((card.Width - logoSize) / 2, y),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.Transparent,
         };
-        pnlMark.Paint += (s, e) =>
+        using (var stream = typeof(LoginForm).Assembly
+                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
         {
-            var g = e.Graphics;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            // Rounded square bg
-            using var b = new SolidBrush(AppTheme.Brand500);
-            g.FillRectangle(b, 0, 0, pnlMark.Width, pnlMark.Height);
-            // Lightning bolt ⚡
-            using var font = new Font("Segoe UI Emoji", 26f);
-            using var fb   = new SolidBrush(Color.White);
-            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString("⚡", font, fb, new RectangleF(0, 0, pnlMark.Width, pnlMark.Height), sf);
-        };
-        card.Controls.Add(pnlMark);
-        y += 74;
+            if (stream != null)
+                pbLogo.Image = Image.FromStream(stream);
+        }
+        card.Controls.Add(pbLogo);
+        y += logoSize + 10;
 
         // App title gradient text
         var lblTitle = new Label
