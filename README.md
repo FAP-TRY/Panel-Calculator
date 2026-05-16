@@ -14,7 +14,7 @@ Aplikasi desktop Windows untuk kalkulasi harga panel listrik PT Tritunggal Swarn
 
 ## Versi Terkini
 
-**v1.2.3** — lihat [Releases](https://github.com/FAP-TRY/Panel-Calculator/releases)
+**v1.2.4** — lihat [Releases](https://github.com/FAP-TRY/Panel-Calculator/releases)
 
 ## Instalasi
 
