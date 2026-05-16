@@ -9,8 +9,8 @@ Output columns:
   category, reference_code, product_name, specifications,
   price, stock_status, vendor, price_year
 
-Discount applied: 45% + 10%  →  net = list_price * (1 - 0.45) * (1 - 0.10)
-                                       = list_price * 0.495
+Discount: NONE — harga list asli dari PDF (tanpa diskon diterapkan).
+Catatan: diskon 45%+10% sudah dihapus per 2026-05-16 sesuai permintaan.
 
 Stock Status: 1 = Stock (default)
 
@@ -48,7 +48,7 @@ except ImportError:
 VENDOR = "Himel"
 DEFAULT_PRICE_YEAR = 2025
 STOCK_STATUS = 1
-DISCOUNT_FACTOR = (1 - 0.45) * (1 - 0.10)  # 0.495
+DISCOUNT_FACTOR = 1.0  # No discount — use raw list price from PDF
 
 # ── Regex ─────────────────────────────────────────────────────────────────────
 
@@ -547,7 +547,7 @@ def main():
     xlsx_out = script_dir / 'himel_products.xlsx'
 
     print(f"[INFO] Reading: {pdf_path}")
-    print(f"[INFO] Discount: 45% + 10% → factor = {DISCOUNT_FACTOR:.4f}")
+    print(f"[INFO] Discount: NONE (harga list asli dari PDF, factor = {DISCOUNT_FACTOR:.4f})")
 
     all_products = []
 
@@ -584,7 +584,7 @@ def main():
     print(f"EXTRACTION COMPLETE")
     print(f"{'='*65}")
     print(f"Total products  : {len(unique_products)}")
-    print(f"Discount factor : {DISCOUNT_FACTOR:.4f}  (45% + 10%)")
+    print(f"Discount factor : {DISCOUNT_FACTOR:.4f}  (NONE — harga list asli)")
     print(f"Vendor          : {VENDOR}")
     print(f"Price year      : {price_year}")
 
