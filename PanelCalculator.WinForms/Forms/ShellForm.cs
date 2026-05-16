@@ -44,11 +44,20 @@ public class ShellForm : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
+
         Text          = "Kalkulator Panel Tritunggal Swarna";
-        Size          = new Size(1380, 840);
         MinimumSize   = new Size(1150, 700);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor     = AppTheme.Background;
+
+        // Adapt initial window size to screen — start maximized on small screens
+        var screen = Screen.FromPoint(Cursor.Position).WorkingArea;
+        if (screen.Width < 1400 || screen.Height < 800)
+            WindowState = FormWindowState.Maximized;
+        else
+            Size = new Size(Math.Min(1380, screen.Width - 40), Math.Min(840, screen.Height - 40));
 
         // ── Top title bar ────────────────────────────────────────────────
         var pnlTopBar = new Panel

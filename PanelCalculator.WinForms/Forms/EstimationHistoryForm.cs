@@ -32,6 +32,8 @@ public class EstimationHistoryForm : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text = "Riwayat Estimasi";
         Size = new Size(900, 580);
         StartPosition = FormStartPosition.CenterParent;

@@ -45,6 +45,8 @@ public class DashboardForm : Form
     // ════════════════════════════════════════════════════════════════════
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text          = "Pipeline Estimasi";
         Size          = new Size(1500, 720);
         MinimumSize   = new Size(1100, 580);

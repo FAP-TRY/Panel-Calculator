@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.2
+- **Versi saat ini:** v1.2.3
 
 ---
 
@@ -93,6 +93,7 @@ import sqlite3, csv
   - v1.2.0: Accept header binary download + PowerShell elevation
   - v1.2.1: Double-save UNIQUE constraint + retry loop
   - v1.2.2: `Application.DoEvents()` menyebabkan autoclose saat download
+  - v1.2.3: DPI scaling — semua form pakai `AutoScaleMode.Dpi` + `PerMonitorV2`
 
 ### Cara Rilis Versi Baru
 

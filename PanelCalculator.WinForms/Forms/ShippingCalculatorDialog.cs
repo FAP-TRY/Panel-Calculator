@@ -87,6 +87,8 @@ public class ShippingCalculatorDialog : Form
     // ════════════════════════════════════════════════════════════════════
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = "Kalkulator Ongkos Kirim";
         Size            = new Size(440, 500);   // height adjusted by RepositionFooter
         MinimumSize     = new Size(440, 360);

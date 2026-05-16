@@ -49,6 +49,8 @@ public class ProductEditDialog : Form
     // ════════════════════════════════════════════════════════════════════
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = _editing == null ? "Tambah Produk Baru" : "Edit Produk";
         Size            = new Size(500, 490);
         MinimumSize     = new Size(460, 460);

@@ -22,6 +22,8 @@ public class UserManagementForm : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = "Manajemen Pengguna";
         BackColor       = AppTheme.Background;
         FormBorderStyle = FormBorderStyle.Sizable;

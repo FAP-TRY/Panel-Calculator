@@ -17,6 +17,8 @@ public class ReportsForm : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text = "Laporan & Analitik";
         Size = new Size(1000, 650);
         StartPosition = FormStartPosition.CenterParent;

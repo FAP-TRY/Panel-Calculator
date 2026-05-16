@@ -23,6 +23,8 @@ public class SaveEstimationDialog : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = "Simpan Estimasi";
         Size            = new Size(440, 440);
         StartPosition   = FormStartPosition.CenterParent;

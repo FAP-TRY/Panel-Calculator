@@ -40,6 +40,8 @@ public class SettingsForm : Form
     // ════════════════════════════════════════════════════════════════════
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = "Pengaturan";
         Size            = new Size(720, 680);
         MinimumSize     = new Size(640, 560);

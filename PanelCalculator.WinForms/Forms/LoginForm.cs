@@ -26,6 +26,8 @@ public class LoginForm : Form
 
     private void BuildUI()
     {
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode       = AutoScaleMode.Dpi;
         Text            = "Kalkulator Panel Tritunggal Swarna";
         Size            = new Size(440, 560);
         StartPosition   = FormStartPosition.CenterScreen;
