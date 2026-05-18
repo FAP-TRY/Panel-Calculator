@@ -35,7 +35,7 @@ public class EstimationHistoryForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
         Text = "Riwayat Estimasi";
-        Size = new Size(900, 580);
+        Size = new Size(1080, 580);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = AppTheme.Background;
         Padding = new Padding(16);
@@ -99,11 +99,15 @@ public class EstimationHistoryForm : Form
         AppTheme.StyleButton(btnExportCsv, AppTheme.Bg3, AppTheme.Text1);
         btnExportCsv.Click += BtnExportCsv_Click;
 
+        var btnImportCsv = new Button { Text = "📥 Import CSV", Location = new Point(722, 10), Width = 130, Height = 36 };
+        AppTheme.StyleButton(btnImportCsv, AppTheme.Bg3, AppTheme.Text1);
+        btnImportCsv.Click += BtnImportCsv_Click;
+
         var lblHint = AppTheme.MakeLabel("Klik 2x untuk membuka ke kalkulator.", AppTheme.FontSmall, AppTheme.TextMuted);
-        lblHint.Location = new Point(724, 18);
+        lblHint.Location = new Point(866, 18);
         lblHint.AutoSize = true;
 
-        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnExportCsv, lblHint });
+        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnExportCsv, btnImportCsv, lblHint });
 
         Controls.Add(dgv);
         Controls.Add(pnlFilter);
@@ -298,63 +302,81 @@ public class EstimationHistoryForm : Form
         {
             Title      = "Export Estimasi ke CSV",
             Filter     = "CSV Files (*.csv)|*.csv",
-            FileName   = $"Estimasi_{est.EstimationNumber}_{est.ClientName}_{DateTime.Now:yyyyMMdd}.csv",
+            FileName   = SanitizeFilename($"Estimasi_{est.EstimationNumber}_{est.ClientName}_{DateTime.Now:yyyyMMdd}.csv"),
             DefaultExt = "csv"
         };
         if (sfd.ShowDialog() != DialogResult.OK) return;
 
         try
         {
-            var ic = System.Globalization.CultureInfo.GetCultureInfo("id-ID");
+            // Round-trip friendly format:
+            //   - Headers: English snake_case (machine readable)
+            //   - Numbers: plain (no thousand separators) so Excel formulas work
+            //   - Dates:   ISO YYYY-MM-DD (unambiguous)
+            //   - Encoding: UTF-8 with BOM (Excel ID opens cleanly)
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
             var sb = new System.Text.StringBuilder();
 
-            // Info header
-            sb.AppendLine($"Nomor Estimasi,{est.EstimationNumber}");
-            sb.AppendLine($"Nomor Surat,{est.NomorSurat}");
-            sb.AppendLine($"Klien,\"{est.ClientName}\"");
-            sb.AppendLine($"Perusahaan,\"{est.Company}\"");
-            sb.AppendLine($"Tanggal,{est.CreatedDate.ToLocalTime():dd/MM/yyyy}");
-            sb.AppendLine($"Perihal,\"{est.ProjectName}\"");
-            sb.AppendLine($"Status,{est.Status}");
+            string Esc(string? s)
+            {
+                s ??= "";
+                if (s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
+                    return "\"" + s.Replace("\"", "\"\"") + "\"";
+                return s;
+            }
+
+            // ── Section 1 of 3: metadata key/value pairs ──────────────────
+            sb.AppendLine("section,key,value");
+            sb.AppendLine($"meta,estimation_number,{Esc(est.EstimationNumber)}");
+            sb.AppendLine($"meta,nomor_surat,{Esc(est.NomorSurat)}");
+            sb.AppendLine($"meta,client_name,{Esc(est.ClientName)}");
+            sb.AppendLine($"meta,company,{Esc(est.Company)}");
+            sb.AppendLine($"meta,project_name,{Esc(est.ProjectName)}");
+            sb.AppendLine($"meta,status,{Esc(est.Status)}");
+            sb.AppendLine($"meta,created_date,{est.CreatedDate.ToLocalTime():yyyy-MM-dd}");
+            sb.AppendLine($"meta,created_at,{est.CreatedDate.ToLocalTime():yyyy-MM-ddTHH:mm:ss}");
             sb.AppendLine();
 
-            // Column headers
-            sb.AppendLine("No,Seksi,Kode Referensi,Nama Produk,Merek/Vendor,Satuan,Qty,Harga Satuan (Rp),Total (Rp)");
+            // ── Section 2 of 3: line items ────────────────────────────────
+            sb.AppendLine("no,section_name,reference_code,product_name,vendor,satuan,quantity,unit_price,line_total");
 
             int no = 0;
             foreach (var d in est.Details)
             {
                 no++;
-                var name   = (d.Product?.ProductName ?? "—").Replace("\"", "\"\"");
-                var code   = (d.Product?.ReferenceCode ?? "—").Replace("\"", "\"\"");
-                var vendor = (d.Product?.Vendor ?? "").Replace("\"", "\"\"");
+                var name   = d.Product?.ProductName ?? "";
+                var code   = d.Product?.ReferenceCode ?? "";
+                var vendor = d.Product?.Vendor ?? "";
                 var sec    = string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section;
                 sb.AppendLine(
                     $"{no}," +
-                    $"\"{sec}\"," +
-                    $"\"{code}\"," +
-                    $"\"{name}\"," +
-                    $"\"{vendor}\"," +
-                    $"{d.Satuan}," +
+                    $"{Esc(sec)}," +
+                    $"{Esc(code)}," +
+                    $"{Esc(name)}," +
+                    $"{Esc(vendor)}," +
+                    $"{Esc(d.Satuan)}," +
                     $"{d.Quantity}," +
-                    $"{d.UnitPrice.ToString("F0", ic)}," +
-                    $"{d.LineTotalPrice.ToString("F0", ic)}");
+                    $"{d.UnitPrice.ToString("0.##", inv)}," +
+                    $"{d.LineTotalPrice.ToString("0.##", inv)}");
             }
 
-            // Summary
+            // ── Section 3 of 3: summary key/value pairs ───────────────────
             sb.AppendLine();
-            sb.AppendLine($",,,,,,,Subtotal,{est.SubTotal.ToString("F0", ic)}");
-            if (est.Margin > 0)
-                sb.AppendLine($",,,,,,,Margin,{est.Margin.ToString("F0", ic)}");
+            sb.AppendLine("summary,key,amount");
+            sb.AppendLine($"summary,subtotal,{est.SubTotal.ToString("0.##", inv)}");
+            if (est.Margin != 0)
+                sb.AppendLine($"summary,margin,{est.Margin.ToString("0.##", inv)}");
             if (est.ShippingCost > 0)
-                sb.AppendLine($",,,,,,,Ongkir,{est.ShippingCost.ToString("F0", ic)}");
+                sb.AppendLine($"summary,shipping,{est.ShippingCost.ToString("0.##", inv)}");
             if (est.Tax > 0)
-                sb.AppendLine($",,,,,,,PPN,{est.Tax.ToString("F0", ic)}");
+                sb.AppendLine($"summary,ppn,{est.Tax.ToString("0.##", inv)}");
             if (est.PPh > 0)
-                sb.AppendLine($",,,,,,,PPh,{est.PPh.ToString("F0", ic)}");
-            sb.AppendLine($",,,,,,,TOTAL,{est.TotalPrice.ToString("F0", ic)}");
+                sb.AppendLine($"summary,pph,{est.PPh.ToString("0.##", inv)}");
+            sb.AppendLine($"summary,grand_total,{est.TotalPrice.ToString("0.##", inv)}");
 
-            File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
+            // UTF-8 with explicit BOM — Excel ID otherwise mis-detects encoding
+            // and shows garbled characters for à or special punctuation.
+            File.WriteAllText(sfd.FileName, sb.ToString(), new System.Text.UTF8Encoding(true));
 
             var open = MessageBox.Show(
                 $"CSV berhasil dibuat ({no} item).\nBuka folder sekarang?",
@@ -368,6 +390,118 @@ public class EstimationHistoryForm : Form
             MessageBox.Show($"Gagal export CSV:\n{ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+    }
+
+    /// <summary>
+    /// Round-trip import: read the 3-section CSV produced by Export CSV and
+    /// re-create the estimation in the local DB. Useful for cross-machine
+    /// backup &amp; restore. Conflicts on EstimationNumber are resolved by a
+    /// prompt: Overwrite / Skip / Rename.
+    /// </summary>
+    private async void BtnImportCsv_Click(object? sender, EventArgs e)
+    {
+        if (_context == null)
+        {
+            MessageBox.Show("Import CSV memerlukan koneksi database. Tidak tersedia di mode terbatas.",
+                "Tidak Tersedia", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var ofd = new OpenFileDialog
+        {
+            Title  = "Import Estimasi dari CSV",
+            Filter = "CSV Files (*.csv)|*.csv|All Files (*.*)|*.*",
+        };
+        if (ofd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var importer = new PanelCalculator.Data.DataSeeding.EstimationCsvImporter(_context);
+
+            var report = await importer.ImportFromFileAsync(ofd.FileName, conflictNumber =>
+            {
+                // Prompt user with 3-button choice
+                using var dlg = new ConflictResolutionDialog(conflictNumber);
+                dlg.ShowDialog(this);
+                return dlg.Result;
+            });
+
+            await LoadDataAsync();
+
+            // Write a side-car log for support audit
+            try
+            {
+                var dir = Path.GetDirectoryName(ofd.FileName);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    var logPath = Path.Combine(dir,
+                        $"import-{Path.GetFileNameWithoutExtension(ofd.FileName)}-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+                    var lines = new List<string>
+                    {
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Estimation CSV import",
+                        $"  source       = {ofd.FileName}",
+                        $"  imported     = {report.Imported}",
+                        $"  est_number   = {report.EstimationNumber}",
+                        $"  final_number = {report.FinalEstimationNumber}",
+                        $"  parsed       = {report.ItemsParsed}",
+                        $"  imported_n   = {report.ItemsImported}",
+                        $"  orphaned     = {report.ItemsOrphaned}",
+                    };
+                    if (report.OrphanedItems.Count > 0)
+                        lines.Add("  ORPHANED ITEMS (not found in catalogue):");
+                    foreach (var o in report.OrphanedItems) lines.Add("    " + o);
+                    if (report.Warnings.Count > 0) lines.Add("  WARNINGS:");
+                    foreach (var w in report.Warnings) lines.Add("    " + w);
+                    if (report.Errors.Count > 0) lines.Add("  ERRORS:");
+                    foreach (var er in report.Errors) lines.Add("    " + er);
+                    File.WriteAllLines(logPath, lines);
+                }
+            }
+            catch { /* best-effort log */ }
+
+            // ── Build user-facing message ────────────────────────────────
+            var sb = new System.Text.StringBuilder();
+            if (report.Imported)
+            {
+                sb.AppendLine($"Estimasi {report.FinalEstimationNumber} berhasil di-import.");
+                sb.AppendLine($"  Item ter-import : {report.ItemsImported} dari {report.ItemsParsed}");
+                if (report.ItemsOrphaned > 0)
+                {
+                    sb.AppendLine($"  Item TANPA produk: {report.ItemsOrphaned} (di-skip)");
+                    sb.AppendLine();
+                    sb.AppendLine("Daftar item yang ProductId-nya tidak ketemu di katalog:");
+                    foreach (var o in report.OrphanedItems.Take(20)) sb.AppendLine("  - " + o);
+                    if (report.OrphanedItems.Count > 20)
+                        sb.AppendLine($"  ... dan {report.OrphanedItems.Count - 20} lainnya.");
+                }
+            }
+            else
+            {
+                sb.AppendLine("Import tidak dilakukan.");
+                foreach (var w in report.Warnings) sb.AppendLine("  • " + w);
+                foreach (var er in report.Errors)  sb.AppendLine("  ⚠ " + er);
+            }
+
+            var icon = report.Imported
+                ? (report.ItemsOrphaned > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information)
+                : MessageBoxIcon.Error;
+            MessageBox.Show(sb.ToString(), report.Imported ? "Import Selesai" : "Import Gagal",
+                MessageBoxButtons.OK, icon);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal import CSV:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>Strip Windows-invalid characters from a filename candidate.</summary>
+    private static string SanitizeFilename(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        var clean = new string(chars).Trim();
+        return string.IsNullOrEmpty(clean) ? "Estimasi.csv" : clean;
     }
 
     private async void BtnChangeStatus_Click(object? sender, EventArgs e)
@@ -423,5 +557,60 @@ public class StatusChangeDialog : Form
         btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
 
         Controls.AddRange(new Control[] { lbl, cmb, btnOk, btnCancel });
+    }
+}
+
+/// <summary>
+/// 3-button dialog shown when import meets a duplicate estimation number.
+/// Choices: Overwrite (replace existing), Skip (cancel import), Rename
+/// (append "-IMPORT2" suffix, increment until unique).
+/// </summary>
+public class ConflictResolutionDialog : Form
+{
+    public PanelCalculator.Data.DataSeeding.EstimationCsvImporter.ConflictResolution Result
+        { get; private set; } =
+            PanelCalculator.Data.DataSeeding.EstimationCsvImporter.ConflictResolution.Skip;
+
+    public ConflictResolutionDialog(string existingNumber)
+    {
+        Text = "Konflik Nomor Estimasi";
+        Size = new Size(440, 200);
+        StartPosition = FormStartPosition.CenterParent;
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        BackColor = AppTheme.Background;
+
+        var lbl1 = AppTheme.MakeLabel($"Estimasi {existingNumber} sudah ada di database.", AppTheme.FontBase, AppTheme.TextPrimary);
+        lbl1.Location = new Point(20, 18); lbl1.AutoSize = true;
+
+        var lbl2 = AppTheme.MakeLabel("Pilih tindakan:", AppTheme.FontSmall, AppTheme.TextSecondary);
+        lbl2.Location = new Point(20, 44); lbl2.AutoSize = true;
+
+        var btnOverwrite = new Button { Text = "Overwrite", Location = new Point(20,  78), Width = 120, Height = 36 };
+        AppTheme.StyleButton(btnOverwrite, AppTheme.Danger, Color.White);
+        btnOverwrite.Click += (s, e) =>
+        {
+            Result = PanelCalculator.Data.DataSeeding.EstimationCsvImporter.ConflictResolution.Overwrite;
+            DialogResult = DialogResult.OK; Close();
+        };
+
+        var btnRename = new Button { Text = "Rename", Location = new Point(150, 78), Width = 120, Height = 36 };
+        AppTheme.StyleButton(btnRename, AppTheme.Primary, Color.White);
+        btnRename.Click += (s, e) =>
+        {
+            Result = PanelCalculator.Data.DataSeeding.EstimationCsvImporter.ConflictResolution.Rename;
+            DialogResult = DialogResult.OK; Close();
+        };
+
+        var btnSkip = new Button { Text = "Skip", Location = new Point(280, 78), Width = 120, Height = 36 };
+        AppTheme.StyleButton(btnSkip, AppTheme.Bg2, AppTheme.Text2);
+        btnSkip.Click += (s, e) =>
+        {
+            Result = PanelCalculator.Data.DataSeeding.EstimationCsvImporter.ConflictResolution.Skip;
+            DialogResult = DialogResult.Cancel; Close();
+        };
+
+        Controls.AddRange(new Control[] { lbl1, lbl2, btnOverwrite, btnRename, btnSkip });
     }
 }

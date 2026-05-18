@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS `AppSettings` (
 CREATE TABLE IF NOT EXISTS `Products` (
     `ProductId` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     `Category` TEXT NOT NULL,
-    `ReferenceCode` TEXT NOT NULL UNIQUE,
+    `ReferenceCode` TEXT NOT NULL,
     `ProductName` TEXT NOT NULL,
     `Specifications` TEXT,
     `Price` TEXT NOT NULL,
@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS `Products` (
     `LastUpdated` TEXT NOT NULL
 );
 
+-- Composite UNIQUE — same code allowed across different vendors.
+CREATE UNIQUE INDEX IF NOT EXISTS `IX_Products_ReferenceCode_Vendor`
+    ON `Products` (`ReferenceCode`, `Vendor`);
 CREATE INDEX `IX_Products_Category` ON `Products` (`Category`);
 
 CREATE TABLE IF NOT EXISTS `Estimations` (

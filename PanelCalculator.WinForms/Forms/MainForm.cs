@@ -1623,6 +1623,15 @@ public partial class MainForm : Form
         }
     }
 
+    /// <summary>Strip Windows-invalid characters from a filename candidate.</summary>
+    private static string SanitizeFilename(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        var clean = new string(chars).Trim();
+        return string.IsNullOrEmpty(clean) ? "Estimasi.csv" : clean;
+    }
+
     // ── Export Estimasi → CSV ─────────────────────────────────────────────
     private void BtnExportEstimationCsv_Click(object? sender, EventArgs e)
     {
@@ -1642,56 +1651,66 @@ public partial class MainForm : Form
         {
             Title      = "Export Estimasi ke CSV",
             Filter     = "CSV Files (*.csv)|*.csv",
-            FileName   = $"Estimasi_{estNo}_{client}_{DateTime.Now:yyyyMMdd}.csv",
+            FileName   = SanitizeFilename($"Estimasi_{estNo}_{client}_{DateTime.Now:yyyyMMdd}.csv"),
             DefaultExt = "csv"
         };
         if (sfd.ShowDialog() != DialogResult.OK) return;
 
         try
         {
+            // Round-trip friendly format — same schema as EstimationHistoryForm export:
+            //   English snake_case headers · plain numbers · ISO dates · UTF-8 BOM.
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
             var sb = new System.Text.StringBuilder();
-            // Header info
-            sb.AppendLine($"Nomor Estimasi,{estNo}");
-            sb.AppendLine($"Klien,\"{client}\"");
-            sb.AppendLine($"Perusahaan,\"{txtCompany.Text.Trim()}\"");
-            sb.AppendLine($"Tanggal,{dtpCreatedDate.Value:dd/MM/yyyy}");
-            sb.AppendLine($"Perihal,\"{txtProjectName.Text.Trim()}\"");
+
+            string Esc(string? s)
+            {
+                s ??= "";
+                if (s.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0)
+                    return "\"" + s.Replace("\"", "\"\"") + "\"";
+                return s;
+            }
+
+            // ── Section 1 of 3: metadata ──────────────────────────────────
+            sb.AppendLine("section,key,value");
+            sb.AppendLine($"meta,estimation_number,{Esc(estNo)}");
+            sb.AppendLine($"meta,client_name,{Esc(client)}");
+            sb.AppendLine($"meta,company,{Esc(txtCompany.Text.Trim())}");
+            sb.AppendLine($"meta,project_name,{Esc(txtProjectName.Text.Trim())}");
+            sb.AppendLine($"meta,created_date,{dtpCreatedDate.Value:yyyy-MM-dd}");
             sb.AppendLine();
 
-            // Column headers
-            sb.AppendLine("No,Seksi,Kode Referensi,Nama Produk,Merek/Vendor,Satuan,Qty,Harga Satuan (Rp),Total (Rp)");
+            // ── Section 2 of 3: line items ────────────────────────────────
+            sb.AppendLine("no,section_name,reference_code,product_name,vendor,satuan,quantity,unit_price,line_total");
 
             int no = 0;
             foreach (var item in _currentItems)
             {
                 no++;
-                var name = item.ProductName.Replace("\"", "\"\"");
-                var code = item.ReferenceCode.Replace("\"", "\"\"");
-                var vendor = item.Vendor.Replace("\"", "\"\"");
                 sb.AppendLine(
                     $"{no}," +
-                    $"\"{item.Section}\"," +
-                    $"\"{code}\"," +
-                    $"\"{name}\"," +
-                    $"\"{vendor}\"," +
-                    $"{item.Satuan}," +
+                    $"{Esc(item.Section)}," +
+                    $"{Esc(item.ReferenceCode)}," +
+                    $"{Esc(item.ProductName)}," +
+                    $"{Esc(item.Vendor)}," +
+                    $"{Esc(item.Satuan)}," +
                     $"{item.Quantity}," +
-                    $"{item.UnitPrice:F0}," +
-                    $"{item.LineTotal:F0}");
+                    $"{item.UnitPrice.ToString("0.##", inv)}," +
+                    $"{item.LineTotal.ToString("0.##", inv)}");
             }
 
-            // Summary
+            // ── Section 3 of 3: summary ───────────────────────────────────
             var (subtotal, _, _, _, totalMarginAmt, ppnAmt, _, total) = CalcAll();
             sb.AppendLine();
-            sb.AppendLine($",,,,,,,,");
-            sb.AppendLine($",,,,,,,Subtotal,{subtotal:F0}");
-            if (totalMarginAmt > 0)
-                sb.AppendLine($",,,,,,,Margin,{totalMarginAmt:F0}");
+            sb.AppendLine("summary,key,amount");
+            sb.AppendLine($"summary,subtotal,{subtotal.ToString("0.##", inv)}");
+            if (totalMarginAmt != 0)
+                sb.AppendLine($"summary,margin,{totalMarginAmt.ToString("0.##", inv)}");
             if (ppnAmt > 0)
-                sb.AppendLine($",,,,,,,PPN,{ppnAmt:F0}");
-            sb.AppendLine($",,,,,,,TOTAL,{total:F0}");
+                sb.AppendLine($"summary,ppn,{ppnAmt.ToString("0.##", inv)}");
+            sb.AppendLine($"summary,grand_total,{total.ToString("0.##", inv)}");
 
-            File.WriteAllText(sfd.FileName, sb.ToString(), System.Text.Encoding.UTF8);
+            File.WriteAllText(sfd.FileName, sb.ToString(), new System.Text.UTF8Encoding(true));
             SetStatus($"✓ CSV disimpan: {Path.GetFileName(sfd.FileName)} ({no} item)");
 
             var open = MessageBox.Show(

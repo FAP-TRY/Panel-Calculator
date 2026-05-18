@@ -27,7 +27,12 @@ public class PanelCalculatorContext : DbContext
             entity.Property(e => e.ProductName).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Category).IsRequired().HasMaxLength(50);
             entity.Property(e => e.Price).HasPrecision(18, 2);
-            entity.HasIndex(e => e.ReferenceCode).IsUnique();
+            // Composite UNIQUE: same ReferenceCode is allowed across different
+            // vendors (Schneider C60N vs Himel C60N). Legacy DBs created before
+            // v1.2.4 still have a single-column UNIQUE on ReferenceCode — the
+            // runtime migration in Program.MigrateDatabase() rebuilds the
+            // Products table to drop the old constraint when needed.
+            entity.HasIndex(e => new { e.ReferenceCode, e.Vendor }).IsUnique();
             entity.HasIndex(e => e.Category);
         });
 

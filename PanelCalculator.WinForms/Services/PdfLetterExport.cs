@@ -10,6 +10,7 @@ using iText.Layout;
 using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
+using PanelCalculator.Core.Services;
 using System.Globalization;
 
 namespace PanelCalculator.WinForms.Services;
@@ -232,15 +233,69 @@ public static class PdfLetterExport
             var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
             ptbl.AddCell(DC($"{no}.",      reg, 9, bg, TextAlignment.CENTER));
             ptbl.AddCell(DC(name,          reg, 9, bg, TextAlignment.LEFT));
-            ptbl.AddCell(DC(FmtNum(st) + ",-", reg, 9, bg, TextAlignment.RIGHT));
+            ptbl.AddCell(DC(Rp(st),        reg, 9, bg, TextAlignment.RIGHT));
         }
         doc.Add(ptbl);
 
-        if (taxPct > 0)
+        // ── Cost summary (Subtotal → Margin → DPP → PPN → PPh → Ongkir → GRAND TOTAL) ──
+        // DPP (Dasar Pengenaan Pajak) = Subtotal + Margin + Ongkir (sebelum PPN/PPh)
+        decimal dpp = subtotal + marginAmount + shippingCost;
+        var sumTbl = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 }))
+            .UseAllAvailableWidth().SetMarginTop(6).SetMarginBottom(6);
+
+        void AddSumRow(string label, decimal value, bool isBold, bool isTotal = false, bool negative = false)
+        {
+            var fontL = isBold ? bold : reg;
+            var bg = isTotal ? ColorTotal : ColorWhite;
+            float size = isTotal ? 11 : 9;
+            string display = negative ? "- " + Rp(System.Math.Abs(value)) : Rp(value);
+
+            sumTbl.AddCell(new Cell()
+                .SetBackgroundColor(bg)
+                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
+                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
+                .SetPaddingLeft(8).SetPaddingRight(6)
+                .SetTextAlignment(TextAlignment.LEFT)
+                .Add(P(label, fontL, size, ColorDark)));
+            sumTbl.AddCell(new Cell()
+                .SetBackgroundColor(bg)
+                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
+                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
+                .SetPaddingLeft(8).SetPaddingRight(8)
+                .SetTextAlignment(TextAlignment.RIGHT)
+                .Add(P(display, fontL, size, ColorDark)));
+        }
+
+        AddSumRow("Subtotal",                                          subtotal,     false);
+        if (marginAmount != 0)
+            AddSumRow(marginAmount >= 0 ? "Margin"          : "Diskon",
+                      marginAmount,                                                  false,
+                      negative: marginAmount < 0);
+        if (shippingCost > 0)
+            AddSumRow("Ongkos Kirim",                                  shippingCost, false);
+        AddSumRow("DPP (Dasar Pengenaan Pajak)",                       dpp,          true);
+        if (taxAmt > 0)
+            AddSumRow($"PPN {taxPct:F0}%",                             taxAmt,       false);
+        if (pphAmt > 0)
+            AddSumRow($"PPh {(pphAmt > 0 && total < subtotal + marginAmount + shippingCost + taxAmt ? "(ditahan)" : "")}".TrimEnd(),
+                      pphAmt,                                                        false,
+                      negative: true);
+        AddSumRow("GRAND TOTAL",                                       total,        true,  isTotal: true);
+        doc.Add(sumTbl);
+
+        // ── Terbilang (grand total spelled in Indonesian words) ─────────
+        doc.Add(P("Terbilang: " + TerbilangFormatter.ToRupiah(total),
+            bold, 10, ColorDark)
+            .SetMarginTop(2)
+            .SetMarginBottom(6)
+            .SetFontColor(ColorDark)
+            .SetItalic());
+
+        if (taxPct > 0 && taxAmt <= 0)
             doc.Add(P($"*) Harga belum termasuk PPN {taxPct:F0}%",
-                reg, 8, ColorMuted).SetMarginBottom(10).SetMarginLeft(2));
+                reg, 8, ColorMuted).SetMarginBottom(6).SetMarginLeft(2));
         else
-            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(8));
+            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
 
         // ── Kondisi Penawaran ─────────────────────────────────────────────
         doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
