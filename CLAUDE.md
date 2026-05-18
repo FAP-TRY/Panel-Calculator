@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.4
+- **Versi saat ini:** v1.2.5
 
 ---
 
@@ -95,6 +95,7 @@ import sqlite3, csv
   - v1.2.2: `Application.DoEvents()` menyebabkan autoclose saat download
   - v1.2.3: DPI scaling — semua form pakai `AutoScaleMode.Dpi` + `PerMonitorV2`
   - v1.2.4: Koreksi harga katalog Himel & FORT ke harga list asli (tanpa diskon)
+  - v1.2.5: Security hardening (DB encrypt, update SHA-256 verify, Obfuscar, BCrypt, license binding) + PDF/CSV format polish
 
 ### Cara Rilis Versi Baru
 
@@ -103,26 +104,64 @@ import sqlite3, csv
 #    - PanelCalculator.WinForms/Services/UpdateService.cs → AppVersion
 #    - PanelCalculator.iss → AppVersion + OutputBaseFilename
 
-# 2. Publish EXE
-dotnet publish PanelCalculator.WinForms/PanelCalculator.WinForms.csproj \
-  --configuration Release --runtime win-x64 --self-contained true \
-  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  --output "./publish"
+# 2. Build single-file EXE (obfuscated) + SHA-256 manifest
+#    Script ini menjalankan: dotnet publish (multi-file) -> Obfuscar (3 DLL aplikasi)
+#    -> overlay obfuscated DLL ke bin -> dotnet publish (single-file, --no-build)
+#    -> copy ke publish\ -> generate .sha256 manifest.
+#    Auto-install Obfuscar.GlobalTool kalau belum ada. Total waktu ~2-3 menit.
+powershell -ExecutionPolicy Bypass -File ".\Tools\build-release-singlefile.ps1"
+# Output:
+#   publish\PanelCalculator.exe         (~179 MB, obfuscated)
+#   publish\PanelCalculator.exe.sha256  (manifest untuk auto-updater)
 
-# 3. Copy dengan nama asset
-cp publish/PanelCalculator.WinForms.exe publish/PanelCalculator.exe
-
-# 4. Compile installer (PowerShell)
+# 3. Compile installer (PowerShell)
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "PanelCalculator.iss"
 
-# 5. Commit, tag, push, buat release
+# 4. Commit, tag, push, buat release
+#    Pastikan file .sha256 ikut di-upload sebagai asset ketiga.
 git add . && git commit -m "Bump version to vX.Y.Z"
 git push origin master
 git tag vX.Y.Z && git push origin vX.Y.Z
 gh release create vX.Y.Z "./publish/PanelCalculator.exe" \
+  "./publish/PanelCalculator.exe.sha256" \
   "./Installer/KalkulatorPanel-TTS-vX.Y.Z-Setup.exe" \
   --title "vX.Y.Z - Deskripsi"
 ```
+
+> **PENTING — single-file EXE auto-update ter-obfuscate (sejak v1.2.4)**
+> Step #2 di atas WAJIB pakai script `build-release-singlefile.ps1`, bukan
+> `dotnet publish` polos. Script ini menjalankan Obfuscar pada
+> `PanelCalculator.{WinForms,Core,Data}.dll` SEBELUM single-file bundler
+> memasukkannya ke EXE. Tanpa script ini, IL 3 DLL aplikasi akan telanjang
+> di dalam EXE 179 MB → bisa di-decompile satu klik dengan ILSpy/dnSpy
+> (membocorkan SQLCipher key derivation, update endpoint, pricing logic).
+> Untuk override (mis. debug build), pakai flag `-SkipObfuscation` — tapi
+> JANGAN release ke customer dengan flag itu aktif.
+
+> **PENTING — verifikasi keamanan update (sejak v1.2.4)**
+> Asset `PanelCalculator.exe.sha256` WAJIB diupload bersama setiap release.
+> Client baru (v1.2.4+) akan menolak install update bila manifest tidak ada
+> atau hash tidak cocok. Lihat `PanelCalculator.Data/Security/UpdateVerifier.cs`
+> dan `docs/security-implementation-log.md` (Item #2) untuk detail.
+
+### Build Installer (Inno Setup multi-file) — `Installer\build.bat`
+
+Alternatif dari step #3 di atas: jalankan `Installer\build.bat` untuk paket
+multi-file (folder `app-final\` di-bundle ke installer Inno Setup).
+Pipeline-nya sekarang **otomatis menjalankan Obfuscar** terhadap 3 DLL
+aplikasi:
+
+1. `dotnet publish` ke `Installer\app-raw\` (self-contained, multi-file)
+2. Auto-install `Obfuscar.GlobalTool` kalau belum ada (`dotnet tool install`)
+3. Obfuscar baca `Installer\obfuscar.xml` → output `Installer\app-obf\`
+4. Overlay 3 DLL obfuscated ke `Installer\app-final\` (runtime DLL .NET tetap utuh)
+5. Compile installer dengan Inno Setup
+
+Tambahan waktu build: ~30 detik (sekali jalan Obfuscar untuk ~10 MB IL).
+Konfigurasi Obfuscar safe untuk WinForms + EF Core: method/field di-rename,
+string literal di-encrypt (`HideStrings=true`), tapi nama type & property
+TIDAK di-rename (supaya EF mapping dan DI tetap jalan). Lihat
+`docs/security-implementation-log.md` (Item #3) untuk detail design.
 
 ---
 
