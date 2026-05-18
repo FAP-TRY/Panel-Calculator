@@ -5,18 +5,25 @@
 
   Strategy (safe for WinForms + EF Core + DI):
     ✅ Rename methods & fields       — main protection layer
-    ✅ Hide / encrypt strings         — hides DB path, error messages, etc.
+    ✅ Hide / encrypt strings         — hides DB path, error messages,
+                                        pepper (MachineKeyProvider), etc.
     ✅ Suppress ILdasm attribute      — prevents .NET disassembler hint
-    ✅ Control flow obfuscation        — scrambles if/while/switch logic
-    ⚠ RenameTypes = false             — kept OFF: DI container & EF Core
-                                        use Type objects; safe to rename but
-                                        set to false to avoid any edge cases.
-    ⚠ RenameProperties = false        — kept OFF: WinForms data-binding and
-                                        EF Core model builder use property names.
+    ⚠ RenameTypes = false             — kept OFF: DI container resolves
+                                        Form types by Type object; EF Core
+                                        uses Type.FullName for table mapping.
+    ⚠ RenameProperties = false        — kept OFF: EF Core model builder
+                                        maps columns by property name.
+
+  WHY THIS IS RE-ENABLED (was skipped in v1.2.3):
+    Obfuscar.GlobalTool 2.2.39+ targets .NET 6 and runs cleanly against
+    .NET 8 assemblies. The "tidak kompatibel" note in the old build.bat
+    referred to a much earlier Obfuscar release. The build pipeline now
+    auto-installs the global tool if it is missing.
 -->
 <Obfuscator>
 
-  <!-- ── I/O paths (set by build.bat via command-line vars) ── -->
+  <!-- ── I/O paths (relative to the directory where the tool is invoked,
+       which is the Installer\ folder per build.bat) ───────────────── -->
   <Var name="InPath"  value=".\app-raw" />
   <Var name="OutPath" value=".\app-obf" />
 
@@ -29,31 +36,70 @@
   <Var name="RenameProperties" value="false" />
   <!-- Keep type names (DI container / EF Core / attributes)  -->
   <Var name="RenameTypes"      value="false" />
-  <!-- Encrypt string literals in IL -->
+  <!-- Encrypt string literals in IL — wraps every literal in a tiny
+       decrypt-on-demand helper. Adds ~5% startup cost, negligible at run. -->
   <Var name="HideStrings"      value="true" />
   <!-- Mark assembly so ILSpy/ILdasm shows obfuscation warning -->
   <Var name="SuppressILdasm"   value="true" />
-  <!-- Keep public API surface (set false = obfuscate more) -->
+  <!-- Keep public API surface (set false = obfuscate more aggressively).
+       Safe because none of our DLLs are referenced by external consumers
+       (the EXE is the only consumer of Core.dll and Data.dll). -->
   <Var name="KeepPublicApi"    value="false" />
-  <!-- Obfuscate event handlers -->
+  <!-- Don't use Unicode names — keeps logs / stack traces readable when
+       a customer pastes an exception screenshot for support. -->
   <Var name="UseUnicodeNames"  value="false" />
+  <!-- Don't rename types/methods marked [Obfuscation(Exclude=true)].
+       This is the default but kept explicit for documentation. -->
+  <Var name="MarkedOnly"       value="false" />
 
   <!-- ── Assemblies to obfuscate ───────────────────────────── -->
   <!--
-    Only process OUR code. The 300+ .NET runtime DLLs are
-    left untouched — Obfuscar only reads them as references.
+    Only process OUR code. The 300+ .NET runtime DLLs that publish
+    drops into app-raw are left untouched — Obfuscar reads them
+    only as references for type resolution.
   -->
   <Module file="$(InPath)\PanelCalculator.WinForms.dll">
-    <!--
-      Skip: Program.Main must keep [STAThread] attribute wiring.
-      Skip: Form constructors called by DI container.
-      Obfuscar skips [System.Reflection.ObfuscationAttribute]
-      decorated members automatically.
-    -->
+    <!-- Belt-and-braces: even with KeepPublicApi=false, force-skip
+         Program.Main wiring. The class is already decorated with
+         [Obfuscation(Exclude=true, ApplyToMembers=false)]. -->
+    <SkipType name="PanelCalculator.WinForms.Program" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
   </Module>
 
-  <Module file="$(InPath)\PanelCalculator.Core.dll" />
+  <Module file="$(InPath)\PanelCalculator.Core.dll">
+    <!-- EF Core uses Type.FullName as the implicit table name and
+         property names as column names. RenameTypes / RenameProperties
+         are already off globally, but skipping the entire Models
+         namespace explicitly protects us against future config drift. -->
+    <SkipNamespace name="PanelCalculator.Core.Models" />
+    <!-- PasswordHasher.Hash / Verify are called cross-assembly from
+         WinForms (LoginForm, SettingsForm, UserManagementForm, Program).
+         Keep the public surface stable so KeepPublicApi=false does not
+         rename them out from under the callers. -->
+    <SkipMethod type="PanelCalculator.Core.Security.PasswordHasher" name="*" />
+    <!-- LicenseService.ValidateLicense + LicensePayload internals are called
+         from WinForms (Program.cs, LicenseGate, ActivationForm, SettingsForm).
+         Strings (including the embedded public key constant) are still
+         encrypted by HideStrings=true. -->
+    <SkipMethod type="PanelCalculator.Core.Security.LicenseService" name="*" />
+    <SkipMethod type="PanelCalculator.Core.Security.LicensePayload" name="*" />
+    <!-- LicenseValidationResult / Status are returned cross-assembly. -->
+    <SkipType name="PanelCalculator.Core.Security.LicenseValidationResult" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+    <SkipType name="PanelCalculator.Core.Security.LicenseValidationStatus" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+  </Module>
 
-  <Module file="$(InPath)\PanelCalculator.Data.dll" />
+  <Module file="$(InPath)\PanelCalculator.Data.dll">
+    <!-- DbContext + entity configuration use property names heavily.
+         The whole DbContext is left untouched for safety. -->
+    <SkipType name="PanelCalculator.Data.PanelCalculatorContext" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+    <!-- Security/* uses WMI + cryptography. Method names can rename,
+         but the public static entry-points (GetKey, MigrateIfNeeded,
+         VerifyOrThrow) are called from Program.cs by name. -->
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetKey" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetHardwareFingerprintBytes" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetHardwareFingerprintDisplay" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="ParseHardwareFingerprintDisplay" />
+    <SkipMethod type="PanelCalculator.Data.Security.DbMigrator"        name="MigrateIfNeeded" />
+    <SkipMethod type="PanelCalculator.Data.Security.UpdateVerifier"    name="*" />
+  </Module>
 
 </Obfuscator>

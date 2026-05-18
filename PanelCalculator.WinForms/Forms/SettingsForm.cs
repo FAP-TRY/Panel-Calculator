@@ -1,11 +1,11 @@
 using ClosedXML.Excel;
 using PanelCalculator.Core.Models;
+using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.Data.DataSeeding;
+using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -26,6 +26,12 @@ public class SettingsForm : Form
 
     // Update section
     private Label  _lblUpdateResult = null!;
+
+    // License section (Item #5)
+    private Label  _lblLicenseStatus     = null!;
+    private Label  _lblLicenseCustomer   = null!;
+    private Label  _lblLicenseFingerprint = null!;
+    private Panel  _pnlLicenseSection    = null!;
 
     /// <summary>Set by the caller (MainForm) before ShowDialog so the form
     /// can hide the user-management section for non-Admin users.</summary>
@@ -131,11 +137,57 @@ public class SettingsForm : Form
         var sep2 = new Panel { Location = new Point(20, 242), Height = 1, Width = 640, BackColor = AppTheme.Border };
 
         // ─────────────────────────────────────────────────────────────────
-        //  SECTION 3: Manajemen Pengguna (Admin only — hidden for Operators)
+        //  SECTION 3: Lisensi (Item #5 — visible to all users; reactivation
+        //  is admin-gated below)
+        // ─────────────────────────────────────────────────────────────────
+        _pnlLicenseSection = new Panel
+        {
+            Location  = new Point(20, 254),
+            Size      = new Size(640, 116),
+            BackColor = Color.Transparent
+        };
+
+        var lblLicenseTitle = AppTheme.MakeLabel("🔐  Lisensi", AppTheme.FontBold, AppTheme.TextPrimary);
+        lblLicenseTitle.Location = new Point(0, 0);
+        lblLicenseTitle.AutoSize = true;
+
+        _lblLicenseStatus = AppTheme.MakeLabel("Status: (memuat...)", AppTheme.FontSmall, AppTheme.TextSecondary);
+        _lblLicenseStatus.Location = new Point(0, 22);
+        _lblLicenseStatus.AutoSize = true;
+
+        _lblLicenseCustomer = AppTheme.MakeLabel("Atas nama: -", AppTheme.FontSmall, AppTheme.TextSecondary);
+        _lblLicenseCustomer.Location = new Point(0, 42);
+        _lblLicenseCustomer.AutoSize = true;
+
+        _lblLicenseFingerprint = AppTheme.MakeLabel("Hardware ID: -", AppTheme.FontMono, AppTheme.Cyan300);
+        _lblLicenseFingerprint.Location = new Point(0, 62);
+        _lblLicenseFingerprint.AutoSize = true;
+
+        var btnReactivate = new Button { Text = "🔄 Re-Aktivasi", Location = new Point(0, 84), Width = 140, Height = 30 };
+        AppTheme.StyleButton(btnReactivate, AppTheme.Primary, Color.White);
+        btnReactivate.Click += BtnReactivate_Click;
+
+        var btnCopyFingerprint = new Button { Text = "📋 Salin ID", Location = new Point(150, 84), Width = 110, Height = 30 };
+        AppTheme.StyleButtonGhost(btnCopyFingerprint);
+        btnCopyFingerprint.Click += (s, e) =>
+        {
+            try { Clipboard.SetText(MachineKeyProvider.GetHardwareFingerprintDisplay()); } catch { }
+        };
+
+        _pnlLicenseSection.Controls.AddRange(new Control[]
+        {
+            lblLicenseTitle, _lblLicenseStatus, _lblLicenseCustomer, _lblLicenseFingerprint,
+            btnReactivate, btnCopyFingerprint
+        });
+
+        var sep3 = new Panel { Location = new Point(20, 376), Height = 1, Width = 640, BackColor = AppTheme.Border };
+
+        // ─────────────────────────────────────────────────────────────────
+        //  SECTION 4: Manajemen Pengguna (Admin only — hidden for Operators)
         // ─────────────────────────────────────────────────────────────────
         _pnlUserSection = new Panel
         {
-            Location    = new Point(20, 254),
+            Location    = new Point(20, 388),
             Size        = new Size(640, 352),
             BackColor   = Color.Transparent
         };
@@ -205,6 +257,7 @@ public class SettingsForm : Form
         {
             lblImportTitle, lblProductCount, btnImport, btnSync, lblLastSync, lblHint, sep,
             lblUpdateTitle, lblCurrentVersion, btnCheckUpdate, _lblUpdateResult, sep2,
+            _pnlLicenseSection, sep3,
             _pnlUserSection, _btnClose
         });
         Controls.Add(pnlBody);
@@ -215,6 +268,7 @@ public class SettingsForm : Form
             UpdateProductCount();
             ReloadUsers();
             LoadLastImportPath();
+            RefreshLicenseSection();
             ApplyRoleVisibility();
         };
     }
@@ -230,19 +284,76 @@ public class SettingsForm : Form
 
         if (isAdmin)
         {
-            // Import + Update + User management
-            // _pnlUserSection at y=254, height=352 → bottom at 606
-            _btnClose.Location = new Point(570, 254 + 352 + 10);  // y = 616
-            Size        = new Size(720, 740);
-            MinimumSize = new Size(640, 620);
+            // Import + Update + License + User management
+            // _pnlUserSection now at y=388, height=352 → bottom at 740
+            _btnClose.Location = new Point(570, 388 + 352 + 10);  // y = 750
+            Size        = new Size(720, 870);
+            MinimumSize = new Size(640, 760);
         }
         else
         {
-            // Import + Update sections only
-            _btnClose.Location = new Point(570, 260);
-            Size        = new Size(720, 380);
-            MinimumSize = new Size(640, 320);
+            // Import + Update + License sections only
+            // License section ends at y=370
+            _btnClose.Location = new Point(570, 380);
+            Size        = new Size(720, 500);
+            MinimumSize = new Size(640, 440);
         }
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  LICENSE (Item #5)
+    // ════════════════════════════════════════════════════════════════════
+    private void RefreshLicenseSection()
+    {
+        try
+        {
+            var fpDisplay = MachineKeyProvider.GetHardwareFingerprintDisplay();
+            _lblLicenseFingerprint.Text = "Hardware ID: " + fpDisplay;
+        }
+        catch (Exception ex)
+        {
+            _lblLicenseFingerprint.Text = "Hardware ID: (error: " + ex.Message + ")";
+        }
+
+        var stored = _context.Settings.FirstOrDefault(s => s.SettingKey == LicenseSettings.LicenseKeySettingName);
+        if (stored == null || string.IsNullOrWhiteSpace(stored.SettingValue))
+        {
+            _lblLicenseStatus.Text      = "Status: TIDAK AKTIF";
+            _lblLicenseStatus.ForeColor = AppTheme.Warning400;
+            _lblLicenseCustomer.Text    = "Atas nama: -";
+            return;
+        }
+
+        try
+        {
+            var fpBytes = MachineKeyProvider.GetHardwareFingerprintBytes();
+            var result  = LicenseService.ValidateLicense(stored.SettingValue, fpBytes);
+            if (result.IsValid)
+            {
+                _lblLicenseStatus.Text      = $"Status: AKTIF  ·  Terbit: {result.IssueDate:yyyy-MM-dd}";
+                _lblLicenseStatus.ForeColor = AppTheme.Success400;
+                _lblLicenseCustomer.Text    = "Atas nama: " + (result.CustomerName ?? "-");
+            }
+            else
+            {
+                _lblLicenseStatus.Text      = "Status: TIDAK VALID (" + result.Status + ")";
+                _lblLicenseStatus.ForeColor = AppTheme.Danger400;
+                _lblLicenseCustomer.Text    = "Atas nama: -";
+            }
+        }
+        catch (Exception ex)
+        {
+            _lblLicenseStatus.Text      = "Status: ERROR (" + ex.Message + ")";
+            _lblLicenseStatus.ForeColor = AppTheme.Danger400;
+        }
+    }
+
+    private void BtnReactivate_Click(object? sender, EventArgs e)
+    {
+        using var dlg = new ActivationForm(_context);
+        dlg.ShowDialog(this);
+        if (dlg.ActivationSuccess)
+            RefreshLicenseSection();
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -917,7 +1028,7 @@ public class SettingsForm : Form
             Username     = dlg.Username,
             FullName     = dlg.FullName,
             Role         = dlg.Role,
-            PasswordHash = HashPassword(dlg.NewPassword),
+            PasswordHash = PasswordHasher.Hash(dlg.NewPassword),
             IsActive     = true,
             CreatedDate  = DateTime.UtcNow
         };
@@ -944,7 +1055,7 @@ public class SettingsForm : Form
         user.FullName = dlg.FullName;
         user.Role     = dlg.Role;
         if (!string.IsNullOrWhiteSpace(dlg.NewPassword))
-            user.PasswordHash = HashPassword(dlg.NewPassword);
+            user.PasswordHash = PasswordHasher.Hash(dlg.NewPassword);
 
         try { _context.SaveChanges(); ReloadUsers(); }
         catch (Exception ex)
@@ -981,17 +1092,12 @@ public class SettingsForm : Form
         using var dlg = new PasswordResetDialog(user.Username);
         if (dlg.ShowDialog() != DialogResult.OK) return;
 
-        user.PasswordHash = HashPassword(dlg.NewPassword);
+        user.PasswordHash = PasswordHasher.Hash(dlg.NewPassword);
         _context.SaveChanges();
         MessageBox.Show($"Password '{user.Username}' berhasil diubah.", "Berhasil",
             MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
-    private static string HashPassword(string pw)
-    {
-        using var sha = SHA256.Create();
-        return Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(pw))).ToLower();
-    }
 }
 
 // ── String extension ──────────────────────────────────────────────────────────

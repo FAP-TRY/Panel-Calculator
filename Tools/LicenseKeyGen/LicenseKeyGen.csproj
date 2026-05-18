@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LicenseKeyGen
+    =============
+    Internal CLI for PT TTS admins. Two responsibilities:
+
+      1) `generate-keypair`   — one-time setup. Produces an Ed25519
+                                 private/public key pair. Private key is
+                                 written to a file the developer keeps OFFLINE
+                                 (NEVER commit to git). Public key is printed
+                                 for the developer to paste into
+                                 LicenseService.PublicKeyBase64.
+
+      2) `issue`              — per-customer activation. Takes the customer's
+                                 hardware fingerprint (as displayed in their
+                                 ActivationForm) and full name, then emits a
+                                 license string to forward via WhatsApp.
+
+    The tool re-uses LicensePayload from PanelCalculator.Core so the byte
+    layout stays guaranteed-identical to the validator at runtime.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PanelCalculator.Tools.LicenseKeyGen</RootNamespace>
+    <AssemblyName>LicenseKeyGen</AssemblyName>
+    <!-- Don't ship this tool with the customer-facing installer. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference Core so we share LicensePayload + LicenseService internals. -->
+    <ProjectReference Include="..\..\PanelCalculator.Core\PanelCalculator.Core.csproj" />
+  </ItemGroup>
+
+</Project>

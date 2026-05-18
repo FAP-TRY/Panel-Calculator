@@ -1,13 +1,14 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PanelCalculator.Core.Models;
+using PanelCalculator.Core.Security;
 using PanelCalculator.Core.Services;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
+using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Forms;
+using PanelCalculator.WinForms.Services;
 using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace PanelCalculator.WinForms;
 
@@ -20,6 +21,36 @@ static class Program
     static void Main()
     {
         ApplicationConfiguration.Initialize();
+
+        // ── Initialize SQLitePCLRaw with the SQLCipher provider BEFORE any
+        // SqliteConnection is opened. The bundle has a module initializer
+        // that does this automatically when the assembly is loaded, but we
+        // call Init() explicitly so the ordering is obvious and reliable.
+        SQLitePCL.Batteries_V2.Init();
+
+        // ── Encrypt-at-rest migration ────────────────────────────────────
+        // Must run BEFORE the DbContext is touched. If the DB on disk is
+        // plain (legacy install) we transparently re-encrypt it with a key
+        // derived from this machine. If the migration fails we surface a
+        // clear error to the user and exit instead of risking data loss.
+        var dbPath = GetDbPath();
+        var logDir = Path.Combine(Path.GetDirectoryName(dbPath)!, "logs");
+        try
+        {
+            DbMigrator.MigrateIfNeeded(dbPath, MachineKeyProvider.GetKey(), logDir);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                "Migrasi database (enkripsi) gagal.\n\n" +
+                $"Detail: {ex.Message}\n\n" +
+                $"Backup database lama tersimpan di:\n{Path.GetDirectoryName(dbPath)}\n\n" +
+                "Aplikasi tidak bisa lanjut. Mohon hubungi support dan jangan hapus folder ini.",
+                "Kalkulator Panel — Migrasi Gagal",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
 
         // Setup DI Container
         var services = new ServiceCollection();
@@ -46,6 +77,32 @@ static class Program
             if (!loginForm.LoginSuccess)
                 break;  // user closed without logging in → exit app
 
+            // ── License gate ─────────────────────────────────────────────
+            // Runs AFTER login (so the admin/user is authenticated before
+            // they see the activation screen — prevents a random walk-in from
+            // probing the activation UI). On a dev machine the gate is
+            // bypassed via DEBUG or the dev-bypass.flag file; in Release on a
+            // customer machine the user MUST paste a valid license.
+            using (var licenseScope = serviceProvider.CreateScope())
+            {
+                var licenseCtx = licenseScope.ServiceProvider.GetRequiredService<PanelCalculatorContext>();
+                var gateResult = LicenseGate.RunGate(licenseCtx, msg =>
+                {
+                    // Best-effort warning log — never fail startup on logging issues.
+                    try { File.AppendAllText(
+                        Path.Combine(Path.GetDirectoryName(dbPath)!, "logs", "license-gate.log"),
+                        $"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] WARN: {msg}{Environment.NewLine}");
+                    } catch { /* ignore */ }
+                    Console.WriteLine("[LicenseGate] " + msg);
+                });
+
+                if (gateResult == LicenseGate.Outcome.UserCancelled)
+                {
+                    loginForm.Dispose();
+                    break;  // user closed activation form → exit app
+                }
+            }
+
             var shell = serviceProvider.GetRequiredService<ShellForm>();
             shell.CurrentUser = loginForm.LoggedInUser!;
             loginForm.Dispose();
@@ -68,6 +125,19 @@ static class Program
         {
             var conn = context.Database.GetDbConnection();
             if (conn.State != System.Data.ConnectionState.Open) conn.Open();
+
+            // ── Products table: relax UNIQUE(ReferenceCode) to composite ──
+            // (ReferenceCode, Vendor). Idempotent — skips when already done.
+            // Runs BEFORE the ADD COLUMN block below so the rebuild copies
+            // the legacy columns and the ADD COLUMN block tops up any new ones.
+            try
+            {
+                var dbDir  = Path.GetDirectoryName(GetDbPath());
+                var logDir = string.IsNullOrEmpty(dbDir) ? null : Path.Combine(dbDir, "logs");
+                var logFile = logDir == null ? null : Path.Combine(logDir, "products-index-migration.log");
+                PanelCalculator.Data.Migrations.ProductsIndexMigrator.Migrate(conn, logFile);
+            }
+            catch { /* non-fatal — schema upgrades below will continue best-effort */ }
 
             void TryExec(string sql)
             {
@@ -124,17 +194,16 @@ static class Program
     {
         try
         {
-            var correctHash = HashPassword("admin");
-            var oldHash     = HashPassword("admin123");
-
             var existing = context.Users.FirstOrDefault(u => u.Username == "admin");
             if (existing == null)
             {
-                // First run – create default admin
+                // First run – create default admin with a fresh BCrypt hash.
+                // (Legacy installs that already have a SHA-256 hash will be
+                // upgraded silently on next successful login — see LoginForm.)
                 context.Users.Add(new User
                 {
                     Username     = "admin",
-                    PasswordHash = correctHash,
+                    PasswordHash = PasswordHasher.Hash("admin"),
                     FullName     = "Administrator",
                     Role         = "Admin",
                     IsActive     = true,
@@ -142,38 +211,53 @@ static class Program
                 });
                 context.SaveChanges();
             }
-            else if (existing.PasswordHash == oldHash)
+            else if (PasswordHasher.Verify("admin123", existing.PasswordHash, out _))
             {
-                // Migrate old "admin123" → "admin"
-                existing.PasswordHash = correctHash;
+                // Historical migration path: very early installs shipped with
+                // password "admin123". Reset to "admin" so the documented
+                // default credentials work. Re-hash with BCrypt regardless of
+                // the previous storage format.
+                existing.PasswordHash = PasswordHasher.Hash("admin");
                 context.SaveChanges();
             }
         }
         catch { /* non-fatal */ }
     }
 
-    public static string HashPassword(string password)
+    /// <summary>
+    /// Canonical location of the application database. Centralized so
+    /// the migrator and the DI container resolve the same path.
+    /// </summary>
+    private static string GetDbPath()
     {
-        using var sha = SHA256.Create();
-        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return Convert.ToHexString(bytes).ToLower();
-    }
-
-    private static void ConfigureServices(ServiceCollection services)
-    {
-        // Get database path
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "PanelCalculator",
             "PanelCalculator.db"
         );
-
-        // Ensure directory exists
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        return dbPath;
+    }
+
+    private static void ConfigureServices(ServiceCollection services)
+    {
+        var dbPath = GetDbPath();
+
+        // Connection string carries the SQLCipher passphrase via the
+        // standard "Password=" parameter. Microsoft.Data.Sqlite forwards
+        // this to sqlite3_key() under the SQLCipher provider.
+        var key = MachineKeyProvider.GetKey();
+        var connectionString =
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Password   = key,
+                Mode       = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+            }.ToString();
 
         // Register DbContext
         services.AddDbContext<PanelCalculatorContext>(options =>
-            options.UseSqlite($"Data Source={dbPath};"),
+            options.UseSqlite(connectionString),
             ServiceLifetime.Transient
         );
 

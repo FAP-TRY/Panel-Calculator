@@ -1,8 +1,7 @@
 using PanelCalculator.Core.Models;
+using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.WinForms.Theme;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -154,7 +153,7 @@ public class UserManagementForm : Form
             Username     = dlg.Username,
             FullName     = dlg.FullName,
             Role         = dlg.Role,
-            PasswordHash = HashPassword(dlg.NewPassword),
+            PasswordHash = PasswordHasher.Hash(dlg.NewPassword),
             IsActive     = true,
             CreatedDate  = DateTime.UtcNow
         };
@@ -182,7 +181,7 @@ public class UserManagementForm : Form
         user.FullName = dlg.FullName;
         user.Role     = dlg.Role;
         if (!string.IsNullOrWhiteSpace(dlg.NewPassword))
-            user.PasswordHash = HashPassword(dlg.NewPassword);
+            user.PasswordHash = PasswordHasher.Hash(dlg.NewPassword);
 
         try
         {
@@ -224,16 +223,11 @@ public class UserManagementForm : Form
         using var dlg = new PasswordResetDialog(user.Username);
         if (dlg.ShowDialog() != DialogResult.OK) return;
 
-        user.PasswordHash = HashPassword(dlg.NewPassword);
+        user.PasswordHash = PasswordHasher.Hash(dlg.NewPassword);
         _context.SaveChanges();
         MessageBox.Show("Password berhasil diubah.", "Sukses", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
-    private static string HashPassword(string pw)
-    {
-        using var sha = SHA256.Create();
-        return Convert.ToHexString(sha.ComputeHash(Encoding.UTF8.GetBytes(pw))).ToLower();
-    }
 }
 
 // ════════════════════════════════════════════════════════════════════════

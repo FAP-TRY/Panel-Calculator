@@ -1,0 +1,59 @@
+<?xml version='1.0'?>
+<!--
+  Obfuscar configuration — SINGLE-FILE release flow
+  ===================================================
+  Used by Tools/build-release-singlefile.ps1 to obfuscate the 3 application
+  assemblies BEFORE the .NET SDK bundles them into the single-file EXE that
+  gets uploaded to GitHub Releases (PanelCalculator.exe, ~179 MB).
+
+  Differs from Installer/obfuscar.xml only in I/O paths:
+    InPath  = release-build-staging\app-raw\     (multi-file dotnet publish output)
+    OutPath = release-build-staging\app-obf\     (Obfuscar writes obfuscated DLLs here)
+
+  All skip rules (EF entities, DbContext, security entry-points, Program)
+  are identical to Installer/obfuscar.xml — keep them in sync if either is edited.
+
+  See docs/security-implementation-log.md Item #3 for rationale of each skip rule.
+-->
+<Obfuscator>
+
+  <!-- I/O paths relative to repo root (script invokes obfuscar from repo root) -->
+  <Var name="InPath"  value=".\release-build-staging\app-raw" />
+  <Var name="OutPath" value=".\release-build-staging\app-obf" />
+
+  <!-- Same global switches as Installer/obfuscar.xml -->
+  <Var name="RenameMethods"    value="true" />
+  <Var name="RenameFields"     value="true" />
+  <Var name="RenameProperties" value="false" />
+  <Var name="RenameTypes"      value="false" />
+  <Var name="HideStrings"      value="true" />
+  <Var name="SuppressILdasm"   value="true" />
+  <Var name="KeepPublicApi"    value="false" />
+  <Var name="UseUnicodeNames"  value="false" />
+  <Var name="MarkedOnly"       value="false" />
+
+  <Module file="$(InPath)\PanelCalculator.WinForms.dll">
+    <SkipType name="PanelCalculator.WinForms.Program" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+  </Module>
+
+  <Module file="$(InPath)\PanelCalculator.Core.dll">
+    <SkipNamespace name="PanelCalculator.Core.Models" />
+    <SkipMethod type="PanelCalculator.Core.Security.PasswordHasher" name="*" />
+    <!-- Item #5: License binding. Cross-assembly calls from WinForms. -->
+    <SkipMethod type="PanelCalculator.Core.Security.LicenseService" name="*" />
+    <SkipMethod type="PanelCalculator.Core.Security.LicensePayload" name="*" />
+    <SkipType name="PanelCalculator.Core.Security.LicenseValidationResult" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+    <SkipType name="PanelCalculator.Core.Security.LicenseValidationStatus" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+  </Module>
+
+  <Module file="$(InPath)\PanelCalculator.Data.dll">
+    <SkipType name="PanelCalculator.Data.PanelCalculatorContext" skipMethods="true" skipFields="true" skipProperties="true" skipEvents="true" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetKey" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetHardwareFingerprintBytes" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="GetHardwareFingerprintDisplay" />
+    <SkipMethod type="PanelCalculator.Data.Security.MachineKeyProvider" name="ParseHardwareFingerprintDisplay" />
+    <SkipMethod type="PanelCalculator.Data.Security.DbMigrator"        name="MigrateIfNeeded" />
+    <SkipMethod type="PanelCalculator.Data.Security.UpdateVerifier"    name="*" />
+  </Module>
+
+</Obfuscator>

@@ -4,7 +4,7 @@
 ; ================================================================
 
 #define MyAppName      "Kalkulator Panel Tritunggal Swarna"
-#define MyAppVersion   "1.0.0"
+#define MyAppVersion   "1.2.5"
 #define MyAppPublisher "Tritunggal Swarna"
 #define MyAppExeName   "PanelCalculator.WinForms.exe"
 ; Unique GUID -- identifies this app in Add/Remove Programs
@@ -13,10 +13,21 @@
 ; ----------------------------------------------------------------
 ; INSTALLER PASSWORD
 ; Password ini diminta saat installer dijalankan.
-; Ganti nilai di bawah untuk mengubah password instalasi.
+; Password TIDAK lagi hardcoded — diambil dari environment variable
+; supaya tidak bocor di git public.
+;
+; Cara set sebelum build installer:
+;   setx PANELCALC_INSTALL_PASSWORD "PasswordBaruYangAman2026"
+; lalu buka Command Prompt / PowerShell BARU.
+;
 ; Encryption=yes mengenkripsi semua file di dalam paket installer.
+; Catatan: password lama "Swarna@2025" sudah ter-leak di git history —
+; JANGAN dipakai lagi untuk release baru.
 ; ----------------------------------------------------------------
-#define MyInstallPassword "Swarna@2025"
+#define MyInstallPassword GetEnv("PANELCALC_INSTALL_PASSWORD")
+#if MyInstallPassword == ""
+  #error Environment variable PANELCALC_INSTALL_PASSWORD belum di-set. Lihat komentar di atas.
+#endif
 
 [Setup]
 AppId={#MyAppId}

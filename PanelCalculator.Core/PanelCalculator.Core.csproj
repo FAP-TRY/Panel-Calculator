@@ -7,8 +7,24 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Release builds: no PDB shipped. Debug builds tetap punya symbols untuk dev. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Expose internals (e.g. PasswordHasher.LegacySha256, LicensePayload) to the test project. -->
+    <InternalsVisibleTo Include="PanelCalculator.Tests" />
+    <!-- The license generator CLI re-uses LicensePayload.BuildSignablePayload / Encode
+         so the byte layout cannot drift between issuer and validator. -->
+    <InternalsVisibleTo Include="LicenseKeyGen" />
   </ItemGroup>
 
 </Project>

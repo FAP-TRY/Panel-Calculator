@@ -1,8 +1,7 @@
 using PanelCalculator.Core.Models;
+using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.WinForms.Theme;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -264,17 +263,26 @@ public class LoginForm : Form
 
         try
         {
-            var hash          = HashPassword(password);
             var usernameLower = username.ToLower();
+            // Lookup by username only — password verification (BCrypt or legacy
+            // SHA-256) is done in-process via PasswordHasher so we can detect
+            // the legacy format and silently upgrade it.
             var user = _context.Users.FirstOrDefault(u =>
-                u.Username.ToLower() == usernameLower && u.PasswordHash == hash && u.IsActive);
+                u.Username.ToLower() == usernameLower && u.IsActive);
 
-            if (user == null)
+            if (user == null || !PasswordHasher.Verify(password, user.PasswordHash, out var needsUpgrade))
             {
                 ShowError("Username atau password salah, atau akun tidak aktif.");
                 txtPassword.Clear();
                 txtPassword.Focus();
                 return;
+            }
+
+            // Silently migrate legacy SHA-256 hash → BCrypt now that we have
+            // the plaintext password in memory. Customer never sees this.
+            if (needsUpgrade)
+            {
+                user.PasswordHash = PasswordHasher.Hash(password);
             }
 
             user.LastLoginDate = DateTime.UtcNow;
@@ -295,12 +303,5 @@ public class LoginForm : Form
     {
         lblError.Text    = msg;
         lblError.Visible = true;
-    }
-
-    public static string HashPassword(string password)
-    {
-        using var sha = SHA256.Create();
-        var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return Convert.ToHexString(bytes).ToLower();
     }
 }

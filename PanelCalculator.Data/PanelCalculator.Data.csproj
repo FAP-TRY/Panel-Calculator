@@ -7,18 +7,37 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Release builds: no PDB shipped. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.1" />
+    <!--
+      Use the *.Core variant so we can control which SQLitePCLRaw provider is loaded.
+      Microsoft.EntityFrameworkCore.Sqlite would force bundle_e_sqlite3 (plain SQLite),
+      which is incompatible with the SQLCipher bundle we need for encryption-at-rest.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.1" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlcipher" Version="2.1.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="CsvHelper" Version="30.0.1" />
+    <!-- Needed for ManagementObjectSearcher (WMI) used by MachineKeyProvider -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\PanelCalculator.Core\PanelCalculator.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PanelCalculator.Tests" />
   </ItemGroup>
 
 </Project>
