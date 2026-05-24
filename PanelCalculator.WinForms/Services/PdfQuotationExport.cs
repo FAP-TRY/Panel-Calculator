@@ -350,4 +350,286 @@ public static class PdfQuotationExport
         decimal UnitPrice,
         decimal AdjPercent,
         decimal LineTotal);
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  COMBINED (MULTI-PANEL) EXPORT — Modern format
+    // ══════════════════════════════════════════════════════════════════════
+    public record CombinedPanel(
+        string  EstimationNumber,
+        string? ProjectName,
+        IReadOnlyList<LineItem> Items);
+
+    /// <summary>
+    /// Render gabungan multi-panel dalam format Modern (warna-warni
+    /// per section). PPN dihitung sekali di akhir.
+    /// </summary>
+    public static void GenerateCombined(
+        string outputPath,
+        string nomorSurat,
+        string clientName,
+        string? contactPhone,
+        string? company,
+        string? address,
+        DateTime createdDate,
+        string notes,
+        IReadOnlyList<CombinedPanel> panels,
+        PanelCalculator.Core.Services.CombinedQuotationCalculator.CombinedSummary summary,
+        IDictionary<string, string> settings)
+    {
+        if (panels.Count == 0)
+            throw new ArgumentException("Minimal satu panel diperlukan.", nameof(panels));
+
+        using var writer   = new PdfWriter(outputPath);
+        using var pdfDoc   = new PdfDocument(writer);
+        using var document = new Document(pdfDoc);
+        document.SetMargins(40, 50, 40, 50);
+
+        var fontRegular = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
+        var fontBold    = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
+
+        var companyName    = GetSetting(settings, "CompanyName",    "PT Electrical Supplies");
+        var companyAddress = GetSetting(settings, "CompanyAddress", "Jakarta, Indonesia");
+        var companyPhone   = GetSetting(settings, "CompanyPhone",   "");
+
+        // ── HEADER ───────────────────────────────────────────────────────
+        var headerTable = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(20);
+        var companyCell = new Cell().SetBorder(Border.NO_BORDER)
+            .Add(new Paragraph(companyName).SetFont(fontBold).SetFontSize(16).SetFontColor(ColorDark).SetMarginBottom(2))
+            .Add(new Paragraph(companyAddress).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(companyPhone))
+            companyCell.Add(new Paragraph(companyPhone).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted));
+        headerTable.AddCell(companyCell);
+        headerTable.AddCell(new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT)
+            .Add(new Paragraph("PENAWARAN MULTI-PANEL").SetFont(fontBold).SetFontSize(16).SetFontColor(ColorPrimary).SetMarginBottom(4))
+            .Add(new Paragraph(nomorSurat).SetFont(fontBold).SetFontSize(11).SetFontColor(ColorDark))
+            .Add(new Paragraph($"{panels.Count} panel").SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted)));
+        document.Add(headerTable);
+        document.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(2f))
+            .SetStrokeColor(ColorPrimary).SetMarginBottom(16));
+
+        // ── CLIENT / DATE ────────────────────────────────────────────────
+        var infoTable = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(20);
+        var clientCell = new Cell().SetBorder(Border.NO_BORDER)
+            .Add(new Paragraph("KEPADA YTH.").SetFont(fontBold).SetFontSize(8).SetFontColor(ColorMuted).SetMarginBottom(2))
+            .Add(new Paragraph(clientName).SetFont(fontBold).SetFontSize(12).SetFontColor(ColorDark).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(company))
+            clientCell.Add(new Paragraph(company).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorDark).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(address))
+            clientCell.Add(new Paragraph(address).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(contactPhone))
+            clientCell.Add(new Paragraph(contactPhone).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted).SetMarginBottom(1));
+        if (!string.IsNullOrWhiteSpace(notes))
+            clientCell.Add(new Paragraph(notes).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted));
+        infoTable.AddCell(clientCell);
+        infoTable.AddCell(new Cell().SetBorder(Border.NO_BORDER).SetTextAlignment(TextAlignment.RIGHT)
+            .Add(new Paragraph("Tanggal").SetFont(fontRegular).SetFontSize(8).SetFontColor(ColorMuted).SetMarginBottom(2))
+            .Add(new Paragraph(createdDate.ToLocalTime().ToString("dd MMMM yyyy",
+                    System.Globalization.CultureInfo.GetCultureInfo("id-ID")))
+                .SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark)));
+        document.Add(infoTable);
+
+        // ── PER PANEL ────────────────────────────────────────────────────
+        for (int pi = 0; pi < panels.Count; pi++)
+        {
+            var panel = panels[pi];
+            var panelLine = summary.Panels[pi];
+
+            // Banner panel (judul + sub-total)
+            var bannerTbl = new Table(UnitValue.CreatePercentArray(new float[] { 70, 30 }))
+                .UseAllAvailableWidth().SetMarginTop(pi == 0 ? 0 : 8).SetMarginBottom(6);
+            bannerTbl.AddCell(new Cell().SetBackgroundColor(ColorAccentBlue).SetBorder(Border.NO_BORDER)
+                .SetPaddingTop(8).SetPaddingBottom(8).SetPaddingLeft(10)
+                .Add(new Paragraph($"PANEL #{pi + 1}  —  {(string.IsNullOrWhiteSpace(panel.ProjectName) ? panel.EstimationNumber : panel.ProjectName)}")
+                    .SetFont(fontBold).SetFontSize(11).SetFontColor(ColorWhite)));
+            bannerTbl.AddCell(new Cell().SetBackgroundColor(ColorAccentBlue).SetBorder(Border.NO_BORDER)
+                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingTop(8).SetPaddingBottom(8).SetPaddingRight(10)
+                .Add(new Paragraph(FormatRupiah(panelLine.PanelSubtotal))
+                    .SetFont(fontBold).SetFontSize(11).SetFontColor(ColorWhite)));
+            document.Add(bannerTbl);
+
+            // Tabel item per panel
+            float[] colWidths = { 5, 11, 32, 7, 8, 12, 7, 18 };
+            var itemsTable = new Table(UnitValue.CreatePercentArray(colWidths))
+                .UseAllAvailableWidth().SetMarginBottom(10);
+            string[] headers = { "No", "Kode", "Nama Produk", "Qty", "Satuan", "Harga Satuan", "Adj", "Total" };
+            foreach (var h in headers)
+                itemsTable.AddHeaderCell(
+                    new Cell().SetBackgroundColor(ColorPrimary).SetBorder(Border.NO_BORDER)
+                        .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingLeft(6).SetPaddingRight(6)
+                        .Add(new Paragraph(h).SetFont(fontBold).SetFontSize(9).SetFontColor(ColorWhite)));
+
+            var sectionGroups = new[] {
+                "Material Utama", "Material Pendukung", "Material Lainnya",
+                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
+            };
+            int globalNo = 0;
+            foreach (var section in sectionGroups)
+            {
+                var sectionItems = panel.Items.Where(i => i.Section == section).ToList();
+                if (sectionItems.Count == 0) continue;
+
+                var (secBg, secFg) = SectionHeaderColors(section);
+                var secTotal = sectionItems.Sum(i => i.LineTotal);
+                var labelCell = new Cell(1, 7).SetBackgroundColor(secBg).SetBorder(Border.NO_BORDER)
+                    .SetPaddingTop(5).SetPaddingBottom(5).SetPaddingLeft(6)
+                    .Add(new Paragraph($"▶  {section.ToUpper()}")
+                        .SetFont(fontBold).SetFontSize(9).SetFontColor(secFg));
+                itemsTable.AddCell(labelCell);
+                itemsTable.AddCell(new Cell().SetBackgroundColor(secBg).SetBorder(Border.NO_BORDER)
+                    .SetTextAlignment(TextAlignment.RIGHT).SetPaddingTop(5).SetPaddingBottom(5).SetPaddingRight(6)
+                    .Add(new Paragraph(FormatRupiah(secTotal)).SetFont(fontBold).SetFontSize(9).SetFontColor(secFg)));
+
+                foreach (var item in sectionItems)
+                {
+                    globalNo++;
+                    var rowBg = globalNo % 2 == 0 ? ColorLightGray : ColorWhite;
+                    var adjStr = item.AdjPercent == 0 ? "—"
+                        : (item.AdjPercent > 0 ? $"+{item.AdjPercent:N1}%" : $"{item.AdjPercent:N1}%");
+                    AddItemCell(itemsTable, globalNo.ToString(),          fontRegular, rowBg, TextAlignment.CENTER);
+                    AddItemCell(itemsTable, item.ReferenceCode,           fontRegular, rowBg);
+                    AddItemCell(itemsTable, item.ProductName,             fontRegular, rowBg);
+                    AddItemCell(itemsTable, item.Quantity.ToString(),     fontRegular, rowBg, TextAlignment.CENTER);
+                    AddItemCell(itemsTable, item.Satuan,                  fontRegular, rowBg, TextAlignment.CENTER);
+                    AddItemCell(itemsTable, FormatRupiah(item.UnitPrice), fontRegular, rowBg, TextAlignment.RIGHT);
+                    AddItemCell(itemsTable, adjStr,                       fontRegular, rowBg, TextAlignment.CENTER);
+                    AddItemCell(itemsTable, FormatRupiah(item.LineTotal), fontBold,    rowBg, TextAlignment.RIGHT);
+                }
+            }
+            document.Add(itemsTable);
+
+            // Sub-total panel (singkat, di kanan)
+            var sub = new Table(UnitValue.CreatePercentArray(new float[] { 65, 35 }))
+                .UseAllAvailableWidth().SetMarginBottom(6);
+            sub.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+            var subInner = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 })).UseAllAvailableWidth();
+            subInner.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetBorderTop(new SolidBorder(ColorBorderRow, 1f))
+                .SetPaddingTop(5).SetPaddingBottom(5)
+                .Add(new Paragraph($"Sub-total Panel #{pi + 1}")
+                    .SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark)));
+            subInner.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetBorderTop(new SolidBorder(ColorBorderRow, 1f))
+                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingTop(5).SetPaddingBottom(5)
+                .Add(new Paragraph(FormatRupiah(panelLine.PanelSubtotal))
+                    .SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark)));
+            sub.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(subInner));
+            document.Add(sub);
+        }
+
+        // ── GRAND SUMMARY ────────────────────────────────────────────────
+        document.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1.5f))
+            .SetStrokeColor(ColorPrimary).SetMarginTop(10).SetMarginBottom(8));
+        document.Add(new Paragraph("RINGKASAN PENAWARAN")
+            .SetFont(fontBold).SetFontSize(11).SetFontColor(ColorPrimary)
+            .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(6));
+
+        var summaryTable = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
+            .UseAllAvailableWidth().SetMarginBottom(10);
+
+        void AddSummaryRow(string label, string value, bool isBold = false, bool isNeg = false)
+        {
+            summaryTable.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+            var inner = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 })).UseAllAvailableWidth();
+            var labelColor = isNeg ? new DeviceRgb(220, 38, 38) : (isBold ? ColorDark : ColorMuted);
+            var valueColor = isNeg ? new DeviceRgb(220, 38, 38) : (isBold ? ColorDark : ColorMuted);
+            inner.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetBorderBottom(new SolidBorder(ColorBorderRow, 0.5f))
+                .SetPaddingTop(5).SetPaddingBottom(5)
+                .Add(new Paragraph(label).SetFont(isBold ? fontBold : fontRegular)
+                    .SetFontSize(9).SetFontColor(labelColor)));
+            inner.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetBorderBottom(new SolidBorder(ColorBorderRow, 0.5f))
+                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingTop(5).SetPaddingBottom(5)
+                .Add(new Paragraph(value).SetFont(isBold ? fontBold : fontRegular)
+                    .SetFontSize(9).SetFontColor(valueColor)));
+            summaryTable.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(inner));
+        }
+
+        foreach (var pl in summary.Panels)
+        {
+            var label = !string.IsNullOrWhiteSpace(pl.ProjectName)
+                ? $"Sub-total Panel #{pl.Index} — {pl.ProjectName}"
+                : $"Sub-total Panel #{pl.Index} ({pl.EstimationNumber})";
+            AddSummaryRow(label, FormatRupiah(pl.PanelSubtotal));
+        }
+        AddSummaryRow("Total Sub-total Semua Panel", FormatRupiah(summary.GrandSubtotal), isBold: true);
+        if (summary.CombinedShippingCost > 0)
+            AddSummaryRow("Ongkos Kirim Gabungan", FormatRupiah(summary.CombinedShippingCost));
+        AddSummaryRow("DPP (Dasar Pengenaan Pajak)", FormatRupiah(summary.DPP), isBold: true);
+        if (summary.TaxAmount > 0)
+            AddSummaryRow($"PPN ({summary.TaxPercent:F1}%) — dihitung sekali", FormatRupiah(summary.TaxAmount));
+        if (summary.TotalPPh > 0)
+            AddSummaryRow("PPh (total ditahan dari semua panel)",
+                "- " + FormatRupiah(summary.TotalPPh), isNeg: true);
+        document.Add(summaryTable);
+
+        // Total
+        var totalTable = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
+            .UseAllAvailableWidth().SetMarginBottom(20);
+        totalTable.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+        var totalInner = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 })).UseAllAvailableWidth();
+        totalInner.AddCell(new Cell().SetBackgroundColor(ColorPrimary).SetBorder(Border.NO_BORDER)
+            .SetPaddingTop(10).SetPaddingBottom(10).SetPaddingLeft(10)
+            .Add(new Paragraph("GRAND TOTAL").SetFont(fontBold).SetFontSize(11).SetFontColor(ColorWhite)));
+        totalInner.AddCell(new Cell().SetBackgroundColor(ColorPrimary).SetBorder(Border.NO_BORDER)
+            .SetTextAlignment(TextAlignment.RIGHT).SetPaddingTop(10).SetPaddingBottom(10).SetPaddingRight(10)
+            .Add(new Paragraph(FormatRupiah(summary.GrandTotal)).SetFont(fontBold).SetFontSize(13).SetFontColor(ColorWhite)));
+        totalTable.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(totalInner));
+        document.Add(totalTable);
+
+        document.Add(new Paragraph("Terbilang: " + summary.Terbilang)
+            .SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark)
+            .SetItalic().SetMarginBottom(14));
+
+        // Syarat & Ketentuan
+        document.Add(new Paragraph("Syarat & Ketentuan")
+            .SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark).SetMarginBottom(4));
+        var skItems = new[]
+        {
+            "Penawaran berlaku selama 14 (empat belas) hari sejak tanggal penawaran.",
+            summary.TaxPercent > 0
+                ? $"Harga belum termasuk PPN {summary.TaxPercent:F0}% (dihitung sekali atas total semua panel)."
+                : "Harga sudah termasuk PPN.",
+            "Pembayaran: DP 30% saat PO diterima, pelunasan 70% sebelum pengiriman.",
+            "Lead time pengiriman menyesuaikan ketersediaan stok / indent vendor.",
+            "Garansi produk mengikuti garansi pabrikan masing-masing brand.",
+            "Harga tidak terikat dan dapat berubah sewaktu-waktu bila ada perubahan harga vendor.",
+        };
+        int sk = 0;
+        foreach (var line in skItems)
+        {
+            sk++;
+            document.Add(new Paragraph($"{sk}. {line}")
+                .SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorDark).SetMarginBottom(1));
+        }
+
+        // Signature
+        var signerName  = GetSetting(settings, "SignerName",    "");
+        var signerTitle = GetSetting(settings, "SignerTitle",   "Marketing");
+        var offerCity   = GetSetting(settings, "OfferLocation", "Bandung");
+        var dateStr     = createdDate.ToLocalTime().ToString("dd MMMM yyyy",
+                            System.Globalization.CultureInfo.GetCultureInfo("id-ID"));
+        var sigTable = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
+            .UseAllAvailableWidth().SetMarginTop(18).SetBorder(Border.NO_BORDER);
+        sigTable.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+        var sigCell = new Cell().SetBorder(Border.NO_BORDER)
+            .Add(new Paragraph($"{offerCity}, {dateStr}").SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorDark).SetMarginBottom(1))
+            .Add(new Paragraph(companyName).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorDark).SetMarginBottom(46));
+        if (!string.IsNullOrWhiteSpace(signerName))
+            sigCell.Add(new Paragraph(signerName).SetFont(fontBold).SetFontSize(10).SetFontColor(ColorDark));
+        else
+            sigCell.Add(new Paragraph("(______________________)").SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted));
+        if (!string.IsNullOrWhiteSpace(signerTitle))
+            sigCell.Add(new Paragraph(signerTitle).SetFont(fontRegular).SetFontSize(9).SetFontColor(ColorMuted));
+        sigTable.AddCell(sigCell);
+        document.Add(sigTable);
+
+        document.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(0.5f))
+            .SetStrokeColor(ColorBorderRow).SetMarginTop(20).SetMarginBottom(6));
+        document.Add(new Paragraph(
+            "Dokumen ini diterbitkan secara elektronik dan sah tanpa tanda tangan basah.")
+            .SetFont(fontRegular).SetFontSize(8).SetFontColor(ColorMuted).SetTextAlignment(TextAlignment.CENTER));
+    }
 }

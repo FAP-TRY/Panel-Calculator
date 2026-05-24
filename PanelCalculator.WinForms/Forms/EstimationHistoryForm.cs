@@ -18,6 +18,7 @@ public class EstimationHistoryForm : Form
     private TextBox txtSearch = null!;
     private ComboBox cmbStatus = null!;
     private List<Estimation> _allEstimations = new();
+    private Button btnCombine = null!;
 
     public EstimationHistoryForm(
         IEstimationRepository estimationRepo,
@@ -65,18 +66,31 @@ public class EstimationHistoryForm : Form
         // Grid
         dgv = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgv);
-        dgv.ReadOnly = true;
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNo",      HeaderText = "No. Estimasi",  FillWeight = 18 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColClient",  HeaderText = "Klien",         FillWeight = 20 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColCompany", HeaderText = "Perusahaan",    FillWeight = 20 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColDate",    HeaderText = "Tanggal",       FillWeight = 14 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColStatus",  HeaderText = "Status",        FillWeight = 10 });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTotal",   HeaderText = "Total Harga",   FillWeight = 18, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
-        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColId",      Visible = false });
+        // ReadOnly diset per-column supaya kolom "Pilih" (checkbox) tetap editable
+        // sementara kolom lain tidak bisa diedit.
+        dgv.ReadOnly = false;
+        // Checkbox di paling kiri untuk multi-select compose surat penawaran gabungan
+        dgv.Columns.Add(new DataGridViewCheckBoxColumn { Name = "ColPick", HeaderText = "Pilih", FillWeight = 6, ReadOnly = false });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNo",      HeaderText = "No. Estimasi",  FillWeight = 18, ReadOnly = true });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColClient",  HeaderText = "Klien",         FillWeight = 20, ReadOnly = true });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColCompany", HeaderText = "Perusahaan",    FillWeight = 20, ReadOnly = true });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColDate",    HeaderText = "Tanggal",       FillWeight = 14, ReadOnly = true });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColStatus",  HeaderText = "Status",        FillWeight = 10, ReadOnly = true });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTotal",   HeaderText = "Total Harga",   FillWeight = 18, ReadOnly = true, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
+        dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColId",      Visible = false, ReadOnly = true });
         dgv.CellDoubleClick += Dgv_CellDoubleClick;
+        // CellContentClick + CommitEdit -> CellValueChanged firing langsung
+        // sehingga tombol "Export PDF Penawaran Gabungan" enabled/disabled
+        // segera setelah user centang/uncentang.
+        dgv.CellContentClick += (s, e) =>
+        {
+            if (e.RowIndex >= 0 && dgv.Columns[e.ColumnIndex].Name == "ColPick")
+                dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
+        };
+        dgv.CellValueChanged += (s, e) => UpdateCombineButtonState();
 
         // Bottom buttons
-        var pnlBottom = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = AppTheme.SidebarBg, Padding = new Padding(12) };
+        var pnlBottom = new Panel { Dock = DockStyle.Bottom, Height = 76, BackColor = AppTheme.SidebarBg, Padding = new Padding(12) };
         pnlBottom.Paint += (s, e) => { using var pen = new Pen(AppTheme.Border); e.Graphics.DrawLine(pen, 0, 0, pnlBottom.Width, 0); };
 
         var btnLoad = new Button { Text = "✏ Edit Estimasi", Location = new Point(12, 10), Width = 150, Height = 36 };
@@ -95,19 +109,24 @@ public class EstimationHistoryForm : Form
         AppTheme.StyleButton(btnExport, AppTheme.Brand500, Color.White);
         btnExport.Click += BtnExport_Click;
 
-        var btnExportCsv = new Button { Text = "📊 Export CSV", Location = new Point(580, 10), Width = 130, Height = 36 };
+        // Tombol baru: gabungkan beberapa estimasi (yang dicentang) → satu surat
+        btnCombine = new Button { Text = "📑 Penawaran Gabungan", Location = new Point(580, 10), Width = 180, Height = 36, Enabled = false };
+        AppTheme.StyleButton(btnCombine, AppTheme.Brand500, Color.White);
+        btnCombine.Click += BtnCombine_Click;
+
+        var btnExportCsv = new Button { Text = "📊 Export CSV", Location = new Point(772, 10), Width = 130, Height = 36 };
         AppTheme.StyleButton(btnExportCsv, AppTheme.Bg3, AppTheme.Text1);
         btnExportCsv.Click += BtnExportCsv_Click;
 
-        var btnImportCsv = new Button { Text = "📥 Import CSV", Location = new Point(722, 10), Width = 130, Height = 36 };
+        var btnImportCsv = new Button { Text = "📥 Import CSV", Location = new Point(914, 10), Width = 130, Height = 36 };
         AppTheme.StyleButton(btnImportCsv, AppTheme.Bg3, AppTheme.Text1);
         btnImportCsv.Click += BtnImportCsv_Click;
 
-        var lblHint = AppTheme.MakeLabel("Klik 2x untuk membuka ke kalkulator.", AppTheme.FontSmall, AppTheme.TextMuted);
-        lblHint.Location = new Point(866, 18);
+        var lblHint = AppTheme.MakeLabel("Centang kotak untuk Penawaran Gabungan; klik 2x baris untuk edit.", AppTheme.FontSmall, AppTheme.TextMuted);
+        lblHint.Location = new Point(12, 44);
         lblHint.AutoSize = true;
 
-        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnExportCsv, btnImportCsv, lblHint });
+        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnCombine, btnExportCsv, btnImportCsv, lblHint });
 
         Controls.Add(dgv);
         Controls.Add(pnlFilter);
@@ -140,7 +159,9 @@ public class EstimationHistoryForm : Form
         dgv.Rows.Clear();
         foreach (var est in filtered)
         {
+            // Urutan kolom: ColPick, ColNo, ColClient, ColCompany, ColDate, ColStatus, ColTotal, ColId
             var rowIdx = dgv.Rows.Add(
+                false, // ColPick (checkbox unchecked default)
                 est.EstimationNumber,
                 est.ClientName,
                 est.Company ?? "",
@@ -154,6 +175,32 @@ public class EstimationHistoryForm : Form
             var (fgColor, _) = AppTheme.GetStatusColor(est.Status);
             dgv.Rows[rowIdx].Cells["ColStatus"].Style.ForeColor = fgColor;
         }
+        UpdateCombineButtonState();
+    }
+
+    /// <summary>Enable tombol Penawaran Gabungan hanya kalau >= 2 baris ter-centang.</summary>
+    private void UpdateCombineButtonState()
+    {
+        if (btnCombine == null) return;
+        int picked = GetCheckedEstimationIds().Count;
+        btnCombine.Enabled = picked >= 2;
+        btnCombine.Text = picked >= 2
+            ? $"📑 Penawaran Gabungan ({picked})"
+            : "📑 Penawaran Gabungan";
+    }
+
+    /// <summary>Ambil ID estimasi yang baris-nya ter-centang oleh user.</summary>
+    private List<int> GetCheckedEstimationIds()
+    {
+        var ids = new List<int>();
+        foreach (DataGridViewRow row in dgv.Rows)
+        {
+            if (row.IsNewRow) continue;
+            var pickVal = row.Cells["ColPick"].Value;
+            if (pickVal is bool b && b && row.Cells["ColId"].Value is int id)
+                ids.Add(id);
+        }
+        return ids;
     }
 
     private void Dgv_CellDoubleClick(object? sender, DataGridViewCellEventArgs e)
@@ -279,6 +326,156 @@ public class EstimationHistoryForm : Form
         catch (Exception ex)
         {
             MessageBox.Show($"Gagal membuat PDF:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            Task.Run(async () =>
+            {
+                await Task.Delay(30_000);
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            });
+        }
+    }
+
+    /// <summary>
+    /// Bangun surat penawaran gabungan dari estimasi-estimasi yang ter-centang.
+    /// Order panel mengikuti urutan baris di grid (terlama → terbaru sesuai filter).
+    /// </summary>
+    private void BtnCombine_Click(object? sender, EventArgs e)
+    {
+        var ids = GetCheckedEstimationIds();
+        if (ids.Count < 2)
+        {
+            MessageBox.Show("Centang minimal 2 estimasi untuk Penawaran Gabungan.",
+                "Perhatian", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // Ambil estimasi sesuai urutan dicentang (urutan baris di grid)
+        var pickedEsts = new List<Estimation>();
+        foreach (var id in ids)
+        {
+            var est = _allEstimations.FirstOrDefault(x => x.EstimationId == id);
+            if (est != null) pickedEsts.Add(est);
+        }
+        if (pickedEsts.Count < 2)
+        {
+            MessageBox.Show("Estimasi yang dipilih tidak valid lagi. Refresh & coba lagi.",
+                "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        // Dialog compose
+        using var dlg = new CombineEstimationsDialog(pickedEsts);
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        var settings = _context != null
+            ? _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "")
+            : new Dictionary<string, string>();
+
+        // Build summary via Core calculator
+        var summary = CombinedQuotationCalculator.Build(
+            pickedEsts,
+            combinedShippingCost: dlg.CombinedShippingCost,
+            taxPercent:           CombinedQuotationCalculator.DefaultTaxPercent);
+
+        // Customer info ambil dari panel pertama
+        var first = pickedEsts[0];
+
+        var tempPath = Path.Combine(Path.GetTempPath(),
+            $"SuratGabungan_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+
+        try
+        {
+            if (dlg.SelectedFormat == CombineEstimationsDialog.PdfFormat.Formal)
+            {
+                var panels = pickedEsts.Select(est =>
+                    new PdfLetterExport.CombinedPanel(
+                        est.EstimationNumber,
+                        est.ProjectName,
+                        est.Details.Select(d => new PdfLetterExport.LineItem(
+                            d.Product?.ReferenceCode ?? "—",
+                            d.Product?.ProductName ?? "—",
+                            d.Product?.Vendor ?? "",
+                            string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                            d.Quantity,
+                            string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                            d.UnitPrice,
+                            d.LineTotalPrice)).ToList()))
+                    .ToList();
+
+                PdfLetterExport.GenerateCombined(
+                    outputPath:   tempPath,
+                    nomorSurat:   dlg.NomorSurat,
+                    clientName:   first.ClientName,
+                    contactPhone: first.ContactPhone,
+                    company:      first.Company,
+                    address:      first.Address,
+                    perihal:      first.ProjectName,
+                    createdDate:  DateTime.UtcNow,
+                    notes:        first.Notes ?? "",
+                    panels:       panels,
+                    summary:      summary,
+                    settings:     settings);
+            }
+            else
+            {
+                var panels = pickedEsts.Select(est =>
+                    new PdfQuotationExport.CombinedPanel(
+                        est.EstimationNumber,
+                        est.ProjectName,
+                        est.Details.Select(d => new PdfQuotationExport.LineItem(
+                            d.Product?.ReferenceCode ?? "—",
+                            d.Product?.ProductName ?? "—",
+                            string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                            d.Quantity,
+                            string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                            d.UnitPrice,
+                            d.AdjPercent,
+                            d.LineTotalPrice)).ToList()))
+                    .ToList();
+
+                PdfQuotationExport.GenerateCombined(
+                    outputPath:   tempPath,
+                    nomorSurat:   dlg.NomorSurat,
+                    clientName:   first.ClientName,
+                    contactPhone: first.ContactPhone,
+                    company:      first.Company,
+                    address:      first.Address,
+                    createdDate:  DateTime.UtcNow,
+                    notes:        first.Notes ?? "",
+                    panels:       panels,
+                    summary:      summary,
+                    settings:     settings);
+            }
+
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(tempPath) { UseShellExecute = true });
+
+            var save = MessageBox.Show(
+                $"Surat Penawaran Gabungan ({pickedEsts.Count} panel) telah dibuka sebagai preview.\n\nSimpan ke file permanen?",
+                "Simpan PDF", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (save == DialogResult.Yes)
+            {
+                using var sfd = new SaveFileDialog
+                {
+                    Title      = "Simpan Surat Penawaran Gabungan",
+                    Filter     = "PDF Files (*.pdf)|*.pdf",
+                    FileName   = $"SuratGabungan_{dlg.NomorSurat}_{DateTime.Now:yyyyMMdd}.pdf",
+                    DefaultExt = "pdf",
+                };
+                if (sfd.ShowDialog() == DialogResult.OK)
+                {
+                    File.Copy(tempPath, sfd.FileName, overwrite: true);
+                    MessageBox.Show($"PDF disimpan:\n{sfd.FileName}", "Tersimpan",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal membuat PDF gabungan:\n{ex.Message}", "Error",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally

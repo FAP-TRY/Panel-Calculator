@@ -106,6 +106,293 @@ public static class PdfLetterExport
         Page2(doc, reg, bold, items, estimationNumber);
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    //  COMBINED (MULTI-PANEL) EXPORT
+    // ══════════════════════════════════════════════════════════════════════
+    /// <summary>
+    /// Satu panel = satu Estimation. Items per panel dikelompokkan agar
+    /// surat penawaran multi-panel bisa di-render dengan ringkasan akhir
+    /// terpisah (PPN dihitung sekali dari total semua panel).
+    /// </summary>
+    public record CombinedPanel(
+        string  EstimationNumber,
+        string? ProjectName,
+        IReadOnlyList<LineItem> Items);
+
+    /// <summary>
+    /// Render surat penawaran gabungan beberapa panel ke satu PDF.
+    /// PPN dan ongkir dihitung di akhir (lihat <see cref="PanelCalculator.Core.Services.CombinedQuotationCalculator"/>).
+    /// Customer info diambil dari panel pertama.
+    /// </summary>
+    public static void GenerateCombined(
+        string outputPath,
+        string nomorSurat,
+        string clientName,
+        string? contactPhone,
+        string? company,
+        string? address,
+        string? perihal,
+        DateTime createdDate,
+        string notes,
+        IReadOnlyList<CombinedPanel> panels,
+        PanelCalculator.Core.Services.CombinedQuotationCalculator.CombinedSummary summary,
+        IDictionary<string, string> settings)
+    {
+        if (panels.Count == 0)
+            throw new ArgumentException("Minimal satu panel diperlukan.", nameof(panels));
+
+        using var writer = new PdfWriter(outputPath);
+        using var pdf    = new PdfDocument(writer);
+
+        var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
+        var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
+
+        var signerName    = Get(settings, "SignerName",    "");
+        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var offerLocation = Get(settings, "OfferLocation", "Bandung");
+
+        var bgPath = FindLetterheadImage(settings);
+        if (bgPath != null)
+            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
+                new BackgroundImageHandler(bgPath));
+
+        using var doc = new Document(pdf, PageSize.A4);
+        doc.SetMargins(90f, 60f, 72f, 60f);
+
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
+
+        // ── Header (Nomor/Perihal/Lampiran + Kepada) ─────────────────────
+        var hdrTbl = new Table(UnitValue.CreatePercentArray(new float[] { 48, 52 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(10);
+        var leftRefTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 4, 68 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
+        AddRef(leftRefTbl, "Nomor",    nomorSurat,                                            reg, bold);
+        AddRef(leftRefTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal! : "Penawaran Harga Multi-Panel", reg, bold);
+        AddRef(leftRefTbl, "Lampiran", $"{panels.Count} Rincian Panel", reg, bold);
+        hdrTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl));
+
+        bool hasCompany = !string.IsNullOrWhiteSpace(company);
+        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
+        rightCell.Add(P("Kepada:", bold, 10, ColorDark).SetMarginBottom(1));
+        if (hasCompany)
+            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
+        else if (!string.IsNullOrWhiteSpace(clientName))
+            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
+        if (!string.IsNullOrWhiteSpace(address))
+            foreach (var line in address.Split(new[]{'\n','\r'}, StringSplitOptions.RemoveEmptyEntries))
+                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
+        if (!string.IsNullOrWhiteSpace(contactPhone))
+            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
+        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
+            rightCell.Add(P($"\nUp. {clientName}", bold, 10, ColorDark).SetMarginBottom(0));
+        hdrTbl.AddCell(rightCell);
+        doc.Add(hdrTbl);
+        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
+
+        // ── Salam pembuka ───────────────────────────────────────────────
+        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));
+        doc.Add(P(
+            $"Bersama ini kami sampaikan penawaran harga untuk {panels.Count} (panel) sebagai berikut:",
+            reg, 10, ColorDark).SetMarginBottom(10));
+
+        // ── Per-panel section ───────────────────────────────────────────
+        for (int pi = 0; pi < panels.Count; pi++)
+        {
+            var panel = panels[pi];
+            var panelTitle = !string.IsNullOrWhiteSpace(panel.ProjectName)
+                ? $"Panel #{pi + 1} — {panel.ProjectName}"
+                : $"Panel #{pi + 1} — {panel.EstimationNumber}";
+
+            doc.Add(P(panelTitle, bold, 11, ColorDark).SetMarginTop(6).SetMarginBottom(4));
+
+            // Ringkasan per section (Material Utama, Pendukung, dst.)
+            var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
+                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
+            var sectionTotals = allSections
+                .Select(s => (Name: s, Total: panel.Items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
+                .Where(x => x.Total > 0)
+                .ToList();
+
+            float[] pw = { 8, 62, 30 };
+            var ptbl = new Table(UnitValue.CreatePercentArray(pw)).UseAllAvailableWidth().SetMarginBottom(4);
+            TblHdr(ptbl, bold,
+                new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
+                new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
+            int no = 0;
+            foreach (var (name, st) in sectionTotals)
+            {
+                no++;
+                var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
+                ptbl.AddCell(DC($"{no}.", reg, 9, bg, TextAlignment.CENTER));
+                ptbl.AddCell(DC(name,     reg, 9, bg, TextAlignment.LEFT));
+                ptbl.AddCell(DC(Rp(st),   reg, 9, bg, TextAlignment.RIGHT));
+            }
+            doc.Add(ptbl);
+
+            // Sub-total per panel (bold, right aligned)
+            var panelSubtotal = summary.Panels[pi].PanelSubtotal;
+            var subtotalTbl = new Table(UnitValue.CreatePercentArray(new float[] { 70, 30 }))
+                .UseAllAvailableWidth().SetMarginBottom(8);
+            subtotalTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingRight(6)
+                .Add(P($"Sub-total Panel #{pi + 1}", bold, 10, ColorDark)));
+            subtotalTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER)
+                .SetBackgroundColor(ColorTotal)
+                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingRight(8).SetPaddingLeft(8)
+                .SetPaddingTop(4).SetPaddingBottom(4)
+                .Add(P(Rp(panelSubtotal), bold, 10, ColorDark)));
+            doc.Add(subtotalTbl);
+        }
+
+        // ── Garis pemisah dan ringkasan akhir ───────────────────────────
+        doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1.2f))
+            .SetStrokeColor(ColorDark).SetMarginTop(6).SetMarginBottom(8));
+
+        doc.Add(P("RINGKASAN PENAWARAN", bold, 11, ColorDark)
+            .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(6));
+
+        var sumTbl = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 }))
+            .UseAllAvailableWidth().SetMarginBottom(6);
+
+        void AddSumRow(string label, decimal value, bool isBold, bool isTotal = false, bool negative = false)
+        {
+            var fontL = isBold ? bold : reg;
+            var bg = isTotal ? ColorTotal : ColorWhite;
+            float size = isTotal ? 11 : 9;
+            string display = negative ? "- " + Rp(System.Math.Abs(value)) : Rp(value);
+            sumTbl.AddCell(new Cell()
+                .SetBackgroundColor(bg)
+                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
+                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
+                .SetPaddingLeft(8).SetPaddingRight(6)
+                .SetTextAlignment(TextAlignment.LEFT)
+                .Add(P(label, fontL, size, ColorDark)));
+            sumTbl.AddCell(new Cell()
+                .SetBackgroundColor(bg)
+                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
+                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
+                .SetPaddingLeft(8).SetPaddingRight(8)
+                .SetTextAlignment(TextAlignment.RIGHT)
+                .Add(P(display, fontL, size, ColorDark)));
+        }
+
+        // Sub-total per panel
+        foreach (var pl in summary.Panels)
+        {
+            var label = !string.IsNullOrWhiteSpace(pl.ProjectName)
+                ? $"Sub-total Panel #{pl.Index} — {pl.ProjectName}"
+                : $"Sub-total Panel #{pl.Index} ({pl.EstimationNumber})";
+            AddSumRow(label, pl.PanelSubtotal, isBold: false);
+        }
+        // Total subtotal
+        AddSumRow("Total Sub-total Semua Panel", summary.GrandSubtotal, isBold: true);
+        if (summary.CombinedShippingCost > 0)
+            AddSumRow("Ongkos Kirim Gabungan", summary.CombinedShippingCost, isBold: false);
+        AddSumRow("DPP (Dasar Pengenaan Pajak)", summary.DPP, isBold: true);
+        if (summary.TaxAmount > 0)
+            AddSumRow($"PPN {summary.TaxPercent:F0}% (dihitung sekali)", summary.TaxAmount, isBold: false);
+        if (summary.TotalPPh > 0)
+            AddSumRow("PPh (ditahan, total dari semua panel)", summary.TotalPPh, isBold: false, negative: true);
+        AddSumRow("GRAND TOTAL", summary.GrandTotal, isBold: true, isTotal: true);
+
+        doc.Add(sumTbl);
+
+        // ── Terbilang ───────────────────────────────────────────────────
+        doc.Add(P("Terbilang: " + summary.Terbilang,
+            bold, 10, ColorDark)
+            .SetMarginTop(2).SetMarginBottom(8).SetItalic());
+
+        // ── Kondisi Penawaran ───────────────────────────────────────────
+        doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
+        var conds = new[]
+        {
+            summary.TaxPercent > 0
+                ? "Harga belum termasuk PPN (menyesuaikan peraturan pemerintah), dihitung sekali atas total seluruh panel"
+                : "Harga sudah termasuk PPN",
+            $"Harga loco {city}",
+            "DP 30% saat PO kami terima dan pelunasan 70% pada saat barang akan dikirimkan",
+            "Harga tidak terikat dan dapat berubah sewaktu-waktu",
+        };
+        for (int ci = 0; ci < conds.Length; ci++)
+            doc.Add(P($"{ci + 1}. {conds[ci]}", reg, 10, ColorDark).SetMarginBottom(2));
+
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
+            doc.Add(P($"Catatan: {notes}", reg, 9, ColorMuted).SetMarginBottom(2));
+        }
+        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(14));
+
+        doc.Add(P(
+            "Demikian surat penawaran ini kami sampaikan. " +
+            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.",
+            reg, 10, ColorDark).SetMarginBottom(20));
+
+        // ── Signature ────────────────────────────────────────────────────
+        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 45, 55 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
+        var sigCell = new Cell().SetBorder(Border.NO_BORDER)
+            .Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(1))
+            .Add(P("PT. Tritunggal Swarna", reg, 10, ColorDark).SetMarginBottom(46));
+        if (!string.IsNullOrWhiteSpace(signerName))
+            sigCell.Add(P(signerName,  bold, 10, ColorDark).SetMarginBottom(0));
+        if (!string.IsNullOrWhiteSpace(signerTitle))
+            sigCell.Add(P(signerTitle, reg,   9, ColorMuted));
+        sigTbl.AddCell(sigCell);
+        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+        doc.Add(sigTbl);
+
+        // ── Halaman Rincian Material per panel ──────────────────────────
+        for (int pi = 0; pi < panels.Count; pi++)
+        {
+            doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+            var panel = panels[pi];
+            var heading = !string.IsNullOrWhiteSpace(panel.ProjectName)
+                ? $"RINCIAN PANEL #{pi + 1} — {panel.ProjectName!.ToUpper()}"
+                : $"RINCIAN PANEL #{pi + 1}";
+            doc.Add(P(heading, bold, 14, ColorDark)
+                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(2));
+            doc.Add(P($"Ref: {panel.EstimationNumber}", reg, 9, ColorMuted)
+                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(10));
+            doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
+                .SetStrokeColor(ColorDark).SetMarginBottom(14));
+
+            var sections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
+                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
+            int sectionNo = 0;
+            foreach (var sec in sections)
+            {
+                var secItems = panel.Items.Where(i => i.Section == sec).ToList();
+                if (secItems.Count == 0) continue;
+                sectionNo++;
+                doc.Add(P($"{sectionNo}. {sec}", bold, 11, ColorDark).SetMarginBottom(6));
+
+                float[] cw = { 6, 37, 16, 23, 9, 9 };
+                var tbl = new Table(UnitValue.CreatePercentArray(cw))
+                    .UseAllAvailableWidth().SetMarginBottom(18);
+                TblHdr(tbl, bold,
+                    new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
+                    new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.LEFT,
+                            TextAlignment.LEFT,   TextAlignment.CENTER, TextAlignment.CENTER });
+
+                int itemNo = 0;
+                foreach (var item in secItems)
+                {
+                    itemNo++;
+                    var bg = itemNo % 2 == 0 ? ColorTableAlt : ColorWhite;
+                    tbl.AddCell(DC(itemNo.ToString(),        reg, 9, bg, TextAlignment.CENTER));
+                    tbl.AddCell(DC(item.ProductName,         reg, 9, bg, TextAlignment.LEFT));
+                    tbl.AddCell(DC(item.Vendor,              reg, 9, bg, TextAlignment.LEFT));
+                    tbl.AddCell(DC(item.ReferenceCode,       reg, 9, bg, TextAlignment.LEFT));
+                    tbl.AddCell(DC(item.Satuan,              reg, 9, bg, TextAlignment.CENTER));
+                    tbl.AddCell(DC(item.Quantity.ToString(), reg, 9, bg, TextAlignment.CENTER));
+                }
+                doc.Add(tbl);
+            }
+        }
+    }
+
     // ── Find the letterhead image file ────────────────────────────────────
     private static string? FindLetterheadImage(IDictionary<string, string> settings)
     {
