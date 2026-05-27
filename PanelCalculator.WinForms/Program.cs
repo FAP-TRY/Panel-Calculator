@@ -20,6 +20,65 @@ static class Program
     [STAThread]
     static void Main()
     {
+        // ── Global crash logger ─────────────────────────────────────────
+        // Pre-v1.2.5 a startup crash (native lib missing, WMI inaccessible,
+        // EF Core failure) would simply close the process with no UI. Now
+        // we route every unhandled exception to a log file in %AppData% so
+        // a non-developer can attach it to a support ticket.
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            CrashLog("AppDomain.UnhandledException", e.ExceptionObject as Exception);
+        Application.ThreadException += (_, e) =>
+            CrashLog("Application.ThreadException", e.Exception);
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+
+        try
+        {
+            RunApp();
+        }
+        catch (Exception ex)
+        {
+            CrashLog("Main.Catch", ex);
+            try
+            {
+                MessageBox.Show(
+                    "Aplikasi tidak bisa dijalankan.\n\n" +
+                    $"Detail: {ex.GetType().Name}: {ex.Message}\n\n" +
+                    $"Log lengkap: %AppData%\\PanelCalculator\\logs\\startup-crash.log\n\n" +
+                    "Mohon kirim file log ke support.",
+                    "Kalkulator Panel — Crash",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            catch { /* MessageBox itself failed — already logged. */ }
+        }
+    }
+
+    /// <summary>Append exception + machine info to startup-crash.log.</summary>
+    private static void CrashLog(string source, Exception? ex)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "PanelCalculator", "logs");
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, "startup-crash.log");
+            var msg =
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {source}{Environment.NewLine}" +
+                $"  App Version : {typeof(Program).Assembly.GetName().Version}{Environment.NewLine}" +
+                $"  Exe Path    : {Environment.ProcessPath}{Environment.NewLine}" +
+                $"  OS          : {Environment.OSVersion}{Environment.NewLine}" +
+                $"  CLR         : {Environment.Version}{Environment.NewLine}" +
+                $"  Exception   : {ex?.GetType().FullName}: {ex?.Message}{Environment.NewLine}" +
+                $"  Stack       :{Environment.NewLine}{ex?.StackTrace}{Environment.NewLine}" +
+                new string('-', 60) + Environment.NewLine;
+            File.AppendAllText(file, msg);
+        }
+        catch { /* writing the crash log itself failed; nothing more to do */ }
+    }
+
+    private static void RunApp()
+    {
         ApplicationConfiguration.Initialize();
 
         // ── Initialize SQLitePCLRaw with the SQLCipher provider BEFORE any

@@ -204,4 +204,83 @@ CREATE INDEX IX_Products_Category ON Products (Category);";
         Assert.True(rep.Skipped);
         Assert.Equal("products-table-missing", rep.SkipReason);
     }
+
+    /// <summary>
+    /// Regression test for the v1.2.5 bug where rebuilding Products via
+    /// "RENAME old → temp; CREATE new; INSERT; DROP temp" left FK references
+    /// in EstimationDetails pointing at the dropped temp table. The fix
+    /// switched to "CREATE new; INSERT; DROP old; RENAME new → old" which
+    /// preserves FK references intact.
+    /// </summary>
+    [Fact]
+    public void Migrate_WithEstimationDetailsFK_PreservesReferences()
+    {
+        var (conn, path) = OpenLegacyDb();
+        try
+        {
+            // Add EstimationDetails with a FK to Products(ProductId).
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+CREATE TABLE Estimations (
+    EstimationId    INTEGER PRIMARY KEY AUTOINCREMENT,
+    EstimationNumber TEXT NOT NULL
+);
+CREATE TABLE EstimationDetails (
+    DetailId      INTEGER PRIMARY KEY AUTOINCREMENT,
+    EstimationId  INTEGER NOT NULL,
+    ProductId     INTEGER NOT NULL,
+    Quantity      INTEGER NOT NULL,
+    FOREIGN KEY (EstimationId) REFERENCES Estimations(EstimationId),
+    FOREIGN KEY (ProductId)    REFERENCES Products(ProductId)
+);";
+                cmd.ExecuteNonQuery();
+            }
+
+            // Enable FK enforcement (matches runtime behaviour)
+            using (var fkCmd = conn.CreateCommand())
+            {
+                fkCmd.CommandText = "PRAGMA foreign_keys = ON";
+                fkCmd.ExecuteNonQuery();
+            }
+
+            Insert(conn, "C60N", "Schneider", "Schneider C60N", 1);
+            Insert(conn, "RCBO-25", "ABB",    "ABB RCBO 25A",   2);
+
+            // Reference both products from EstimationDetails
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+INSERT INTO Estimations (EstimationId, EstimationNumber) VALUES (1, 'EST-001');
+INSERT INTO EstimationDetails (EstimationId, ProductId, Quantity) VALUES (1, 1, 5);
+INSERT INTO EstimationDetails (EstimationId, ProductId, Quantity) VALUES (1, 2, 3);";
+                cmd.ExecuteNonQuery();
+            }
+
+            var rep = ProductsIndexMigrator.Migrate(conn);
+            Assert.False(rep.Skipped);
+
+            // After migration, FK enforcement should still find both products.
+            // The buggy old code left FKs dangling at 'Products_legacy_v123'
+            // which got dropped, so foreign_key_check would report orphans.
+            using (var checkCmd = conn.CreateCommand())
+            {
+                checkCmd.CommandText = "PRAGMA foreign_key_check";
+                using var rdr = checkCmd.ExecuteReader();
+                int orphans = 0;
+                while (rdr.Read()) orphans++;
+                Assert.Equal(0, orphans);
+            }
+
+            // And EstimationDetails should still resolve product names via JOIN.
+            using (var joinCmd = conn.CreateCommand())
+            {
+                joinCmd.CommandText = @"
+SELECT COUNT(*) FROM EstimationDetails d
+INNER JOIN Products p ON p.ProductId = d.ProductId";
+                Assert.Equal(2, Convert.ToInt32(joinCmd.ExecuteScalar()));
+            }
+        }
+        finally { CleanupDb(conn, path); }
+    }
 }

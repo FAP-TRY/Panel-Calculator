@@ -62,6 +62,27 @@ public static class ProductsIndexMigrator
         var log    = new StringBuilder();
         log.AppendLine($"[{DateTime.UtcNow:yyyy-MM-dd HH:mm:ss}] BEGIN ProductsIndexMigrator");
 
+        // SQLite rule: foreign_keys pragma cannot change INSIDE a transaction.
+        // The rebuild renames Products → temp + DROP temp, which would normally
+        // fail the FK from EstimationDetails.ProductId. We disable FK enforcement
+        // for the duration of the rebuild, then re-enable + run a foreign_key_check
+        // after commit to ensure no orphans got introduced.
+        bool fkWasOn = false;
+        try
+        {
+            using var cmdFkRead = conn.CreateCommand();
+            cmdFkRead.CommandText = "PRAGMA foreign_keys";
+            fkWasOn = Convert.ToInt32(cmdFkRead.ExecuteScalar()) != 0;
+            using var cmdFkOff = conn.CreateCommand();
+            cmdFkOff.CommandText = "PRAGMA foreign_keys = OFF";
+            cmdFkOff.ExecuteNonQuery();
+            log.AppendLine($"  foreign_keys_was={fkWasOn}, now=OFF for rebuild");
+        }
+        catch (Exception fkEx)
+        {
+            log.AppendLine($"  WARN could not toggle foreign_keys: {fkEx.Message}");
+        }
+
         using var tx = conn.BeginTransaction();
         try
         {
@@ -117,18 +138,24 @@ WHERE ProductId NOT IN (
             // ── 3) Rebuild the table without the column-level UNIQUE ─────
             // Build CREATE statement that matches the original schema EXCEPT
             // the UNIQUE keyword on ReferenceCode.
-            var createSql = BuildProductsCreateTable(columns);
-            ExecNonQuery(conn, tx, "ALTER TABLE Products RENAME TO Products_legacy_v123");
+            //
+            // CRITICAL ORDER (per SQLite docs §7 "Making Other Kinds Of Table
+            // Schema Changes"): CREATE new → INSERT → DROP old → RENAME new.
+            //
+            // The naive "RENAME old → temp; CREATE new; INSERT; DROP temp"
+            // looks equivalent but is BROKEN: SQLite's modern ALTER TABLE
+            // (legacy_alter_table=OFF, the default since 3.25) auto-updates
+            // FK references during RENAME, so EstimationDetails.ProductId FK
+            // ends up pointing at the temp-renamed table, then dangles when
+            // we DROP it. The DROP-first pattern below sidesteps the auto-
+            // update because (a) DROP of Products doesn't touch FK refs and
+            // (b) the final RENAME Products_new → Products is a fresh rename
+            // that only affects rows already referencing 'Products_new' (none).
+            var createSql = BuildProductsNewCreateTable(columns);
             ExecNonQuery(conn, tx, createSql);
-            ExecNonQuery(conn, tx, $"INSERT INTO Products ({colList}) SELECT {colList} FROM Products_legacy_v123");
-            ExecNonQuery(conn, tx, "DROP TABLE Products_legacy_v123");
-
-            // EstimationDetails has a foreign key into Products(ProductId).
-            // SQLite stores FKs by referenced column NAME, and we kept that
-            // name + INTEGER PRIMARY KEY AUTOINCREMENT, so the FK survives
-            // the rename. Re-enable / verify the FK pragma here as a sanity
-            // check — failure is non-fatal so we just log it.
-            // (FOREIGN_KEYS pragma stays at whatever the caller set.)
+            ExecNonQuery(conn, tx, $"INSERT INTO Products_new ({colList}) SELECT {colList} FROM Products");
+            ExecNonQuery(conn, tx, "DROP TABLE Products");
+            ExecNonQuery(conn, tx, "ALTER TABLE Products_new RENAME TO Products");
 
             // ── 4) Create the new composite UNIQUE index ─────────────────
             ExecNonQuery(conn, tx,
@@ -161,6 +188,41 @@ WHERE ProductId NOT IN (
         }
         finally
         {
+            // Restore foreign_keys pragma to original state (default ON).
+            // Run after transaction commit/rollback because pragma can't change
+            // inside a transaction. Also run foreign_key_check to verify no
+            // orphans got introduced by the rebuild.
+            try
+            {
+                if (fkWasOn)
+                {
+                    using var cmdFkOn = conn.CreateCommand();
+                    cmdFkOn.CommandText = "PRAGMA foreign_keys = ON";
+                    cmdFkOn.ExecuteNonQuery();
+
+                    using var cmdCheck = conn.CreateCommand();
+                    cmdCheck.CommandText = "PRAGMA foreign_key_check";
+                    using var rdr = cmdCheck.ExecuteReader();
+                    int orphanCount = 0;
+                    while (rdr.Read())
+                    {
+                        orphanCount++;
+                        if (orphanCount <= 10)
+                        {
+                            log.AppendLine($"  FK_ORPHAN table={rdr.GetValue(0)} rowid={rdr.GetValue(1)} ref={rdr.GetValue(2)}");
+                        }
+                    }
+                    if (orphanCount > 0)
+                        log.AppendLine($"  WARNING: {orphanCount} orphan FK rows detected post-migration (logged above; truncated to 10).");
+                    else
+                        log.AppendLine($"  foreign_key_check: PASSED (no orphans)");
+                }
+            }
+            catch (Exception restoreEx)
+            {
+                log.AppendLine($"  WARN could not restore foreign_keys / run check: {restoreEx.Message}");
+            }
+
             // Best-effort log write — never fail migration over a log file
             if (!string.IsNullOrWhiteSpace(logFilePath))
             {
@@ -216,14 +278,16 @@ WHERE ProductId NOT IN (
         return list;
     }
 
-    private static string BuildProductsCreateTable(List<ColumnInfo> columns)
+    private static string BuildProductsNewCreateTable(List<ColumnInfo> columns)
     {
         // We need to recreate the table EXACTLY as before, minus the column-
         // level UNIQUE on ReferenceCode. PRAGMA table_info does not expose
         // column-level UNIQUE, so we hand-craft the column SQL using known
         // column names and rely on the dedupe + composite index for uniqueness.
+        // Temp name 'Products_new' is renamed to 'Products' AFTER the legacy
+        // table is dropped — see migration step ordering.
         var sb = new StringBuilder();
-        sb.AppendLine("CREATE TABLE Products (");
+        sb.AppendLine("CREATE TABLE Products_new (");
         for (int i = 0; i < columns.Count; i++)
         {
             var c = columns[i];
