@@ -1,11 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!-- net8.0-windows agar bisa reference PanelCalculator.WinForms.csproj
+         (yang juga net8.0-windows). Tests dengan target net8.0 saja tidak
+         dapat mereferensikan TargetFramework "windows" karena cross-target. -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <IsTestProject>true</IsTestProject>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- UseWindowsForms ditambahkan supaya transitive deps WinForms (System.Drawing, dll) tersedia. -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +32,10 @@
   <ItemGroup>
     <ProjectReference Include="..\PanelCalculator.Core\PanelCalculator.Core.csproj" />
     <ProjectReference Include="..\PanelCalculator.Data\PanelCalculator.Data.csproj" />
+    <!-- Reference ke WinForms supaya bisa test WordLetterExport & ExcelLetterExport
+         (services di WinForms project). Tests project sekarang net8.0-windows
+         agar cross-target consistent. -->
+    <ProjectReference Include="..\PanelCalculator.WinForms\PanelCalculator.WinForms.csproj" />
   </ItemGroup>
 
 </Project>

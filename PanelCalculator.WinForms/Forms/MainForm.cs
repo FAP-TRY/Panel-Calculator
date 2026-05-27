@@ -1733,11 +1733,50 @@ public partial class MainForm : Form
         form.ShowDialog();
     }
 
-    private void BtnSettings_Click(object? sender, EventArgs e)
+    private async void BtnSettings_Click(object? sender, EventArgs e)
     {
         using var form = new SettingsForm(_context) { CurrentUser = CurrentUser };
         form.ShowDialog();
         LoadSettingsFromDb();
+
+        // Refresh katalog setelah Settings ditutup — kalau user habis Import CSV/Excel
+        // di Settings, kategori/merk baru harus muncul di dropdown filter MainForm
+        // tanpa user perlu logout-login dulu. Aman dipanggil walau Settings tidak
+        // menambah produk (sekedar re-query DB, cepat).
+        await RefreshCatalog();
+    }
+
+    /// <summary>
+    /// Refresh dropdown kategori + merk dan reload daftar produk dari database.
+    /// Dipanggil setelah Settings ditutup (kemungkinan user habis import CSV/Excel
+    /// yang menambah kategori atau vendor baru). Public agar bisa dipanggil dari
+    /// luar (mis. event handler SettingsForm.CatalogImported di masa depan).
+    /// </summary>
+    public async Task RefreshCatalog()
+    {
+        try
+        {
+            // Simpan pilihan user sebelum refresh agar pengalaman tidak terputus
+            var prevCategory = cmbCategory.SelectedItem?.ToString();
+            var prevVendor   = cmbVendor.SelectedItem?.ToString();
+            var prevSearch   = txtSearch.Text;
+
+            await LoadCategoriesAsync();
+
+            // Restore selection bila kategori/vendor sebelumnya masih ada
+            if (!string.IsNullOrEmpty(prevCategory) && cmbCategory.Items.Contains(prevCategory))
+                cmbCategory.SelectedItem = prevCategory;
+            if (!string.IsNullOrEmpty(prevVendor) && cmbVendor.Items.Contains(prevVendor))
+                cmbVendor.SelectedItem = prevVendor;
+
+            await LoadProductsAsync(prevSearch,
+                cmbCategory.SelectedItem?.ToString(),
+                cmbVendor.SelectedItem?.ToString());
+        }
+        catch
+        {
+            // Best-effort — kalau DB error, jangan crash UI. User bisa restart manual.
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════

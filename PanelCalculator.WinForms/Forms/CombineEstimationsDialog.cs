@@ -11,7 +11,18 @@ namespace PanelCalculator.WinForms.Forms;
 /// </summary>
 public class CombineEstimationsDialog : Form
 {
-    public enum PdfFormat { Formal, Modern }
+    /// <summary>Format file output untuk surat penawaran gabungan.</summary>
+    public enum PdfFormat
+    {
+        /// <summary>Surat formal PDF (default — kop surat resmi).</summary>
+        Formal,
+        /// <summary>Modern colorful PDF (per-section warna).</summary>
+        Modern,
+        /// <summary>Word .docx — editable di MS Word.</summary>
+        Word,
+        /// <summary>Excel .xlsx — editable dengan SUM formula.</summary>
+        Excel,
+    }
 
     public decimal   CombinedShippingCost { get; private set; } = 0m;
     public string    NomorSurat           { get; private set; } = "";
@@ -126,14 +137,14 @@ public class CombineEstimationsDialog : Form
         AppTheme.StyleTextBox(txtOngkir);
         Controls.Add(txtOngkir); y += 34;
 
-        // ── Format ──────────────────────────────────────────────────────
-        Controls.Add(AppTheme.MakeLabel("Format PDF:",
+        // ── Format output ──────────────────────────────────────────────
+        Controls.Add(AppTheme.MakeLabel("Format Output:",
             AppTheme.FontSmall, AppTheme.TextSecondary)
             .Apply(c => c.Location = new Point(x, y))); y += 18;
 
         var rbFormal = new RadioButton
         {
-            Text      = "Surat Formal (kop surat resmi)",
+            Text      = "PDF Surat Formal (kop surat resmi)",
             Location  = new Point(x, y),
             Width     = 280,
             Checked   = true,
@@ -142,7 +153,7 @@ public class CombineEstimationsDialog : Form
         };
         var rbModern = new RadioButton
         {
-            Text      = "Modern (warna-warni per section)",
+            Text      = "PDF Modern (warna-warni per section)",
             Location  = new Point(x + 290, y),
             Width     = 280,
             ForeColor = AppTheme.Text1,
@@ -150,10 +161,31 @@ public class CombineEstimationsDialog : Form
         };
         Controls.Add(rbFormal);
         Controls.Add(rbModern);
+        y += 26;
+
+        // Word + Excel (editable formats) — di baris kedua
+        var rbWord = new RadioButton
+        {
+            Text      = "Word .docx (editable di MS Word)",
+            Location  = new Point(x, y),
+            Width     = 280,
+            ForeColor = AppTheme.Text1,
+            BackColor = AppTheme.Background,
+        };
+        var rbExcel = new RadioButton
+        {
+            Text      = "Excel .xlsx (dengan SUM formula)",
+            Location  = new Point(x + 290, y),
+            Width     = 280,
+            ForeColor = AppTheme.Text1,
+            BackColor = AppTheme.Background,
+        };
+        Controls.Add(rbWord);
+        Controls.Add(rbExcel);
         y += 34;
 
         // ── Buttons ─────────────────────────────────────────────────────
-        var btnOk = new Button { Text = "📄 Generate PDF", Location = new Point(x, y), Width = 200, Height = 36 };
+        var btnOk = new Button { Text = "📄 Generate", Location = new Point(x, y), Width = 200, Height = 36 };
         AppTheme.StyleButton(btnOk, AppTheme.Success, Color.White);
         btnOk.Click += (s, ev) =>
         {
@@ -176,7 +208,11 @@ public class CombineEstimationsDialog : Form
 
             CombinedShippingCost = ong;
             NomorSurat           = txtNomor.Text.Trim();
-            SelectedFormat       = rbModern.Checked ? PdfFormat.Modern : PdfFormat.Formal;
+            // Pick format dari radio yang dicentang
+            if      (rbWord.Checked)   SelectedFormat = PdfFormat.Word;
+            else if (rbExcel.Checked)  SelectedFormat = PdfFormat.Excel;
+            else if (rbModern.Checked) SelectedFormat = PdfFormat.Modern;
+            else                       SelectedFormat = PdfFormat.Formal;
             DialogResult         = DialogResult.OK;
             Close();
         };

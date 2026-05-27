@@ -37,6 +37,16 @@ public class SettingsForm : Form
     /// can hide the user-management section for non-Admin users.</summary>
     public User? CurrentUser { get; set; }
 
+    /// <summary>
+    /// Fired setelah Import CSV/Excel berhasil menambah/update minimal 1 produk.
+    /// Subscriber (mis. MainForm via ShellForm) bisa pakai event ini untuk
+    /// refresh dropdown filter kategori/merk tanpa user perlu restart aplikasi.
+    /// Saat ini Settings dibuka modal dari MainForm; MainForm sudah refresh
+    /// otomatis setelah ShowDialog returns — event ini disediakan untuk
+    /// fleksibilitas masa depan (mis. kalau Settings dibuka non-modal).
+    /// </summary>
+    public event EventHandler? CatalogImported;
+
     public SettingsForm(PanelCalculatorContext context)
     {
         _context = context;
@@ -597,6 +607,14 @@ public class SettingsForm : Form
 
             MessageBox.Show($"Berhasil import / update {count} produk dari:\n{Path.GetFileName(filePath)}",
                 "Import Selesai", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+            // Notifikasi subscriber (mis. MainForm) bahwa katalog ter-update,
+            // supaya bisa refresh dropdown kategori/merk. Fire hanya kalau
+            // beneran ada produk yang ter-affect.
+            if (count > 0)
+            {
+                try { CatalogImported?.Invoke(this, EventArgs.Empty); } catch { }
+            }
         }
         catch (Exception ex)
         {

@@ -19,6 +19,8 @@ public class EstimationHistoryForm : Form
     private ComboBox cmbStatus = null!;
     private List<Estimation> _allEstimations = new();
     private Button btnCombine = null!;
+    private ToolTip _toolTip = null!;
+    private bool _bulkToggling; // re-entrancy guard untuk header-click "Centang Semua"
 
     public EstimationHistoryForm(
         IEstimationRepository estimationRepo,
@@ -36,10 +38,18 @@ public class EstimationHistoryForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
         Text = "Riwayat Estimasi";
-        Size = new Size(1080, 580);
+        Size = new Size(1080, 620);
         StartPosition = FormStartPosition.CenterParent;
         BackColor = AppTheme.Background;
         Padding = new Padding(16);
+
+        _toolTip = new ToolTip
+        {
+            AutoPopDelay = 8000,
+            InitialDelay = 300,
+            ReshowDelay  = 200,
+            ShowAlways   = true,
+        };
 
         // Top filter bar
         var pnlFilter = new Panel { Dock = DockStyle.Top, Height = 60, BackColor = AppTheme.SidebarBg, Padding = new Padding(12, 8, 12, 8) };
@@ -63,14 +73,48 @@ public class EstimationHistoryForm : Form
 
         pnlFilter.Controls.AddRange(new Control[] { lblSearch, txtSearch, lblStatus, cmbStatus });
 
+        // Hint banner (prominen) — kasih tau user cara pakai Penawaran Gabungan.
+        // Diletakkan di antara filter dan grid agar selalu kelihatan.
+        var pnlHint = new Panel
+        {
+            Dock      = DockStyle.Top,
+            Height    = 44,
+            BackColor = AppTheme.Bg2,
+            Padding   = new Padding(14, 8, 14, 8),
+        };
+        pnlHint.Paint += (s, e) =>
+        {
+            // Bar vertikal aksen di kiri (biar mata user langsung tertarik)
+            using var br = new SolidBrush(AppTheme.Brand500);
+            e.Graphics.FillRectangle(br, 0, 0, 4, pnlHint.Height);
+            using var pen = new Pen(AppTheme.Border);
+            e.Graphics.DrawLine(pen, 0, pnlHint.Height - 1, pnlHint.Width, pnlHint.Height - 1);
+        };
+        var lblHintBanner = new Label
+        {
+            Text =
+                "💡 Penawaran Gabungan: centang ☑ kolom 'Pilih' (kiri) di minimal 2 estimasi, " +
+                "lalu klik tombol 'Penawaran Gabungan' di bawah. " +
+                "Tips: klik di mana saja pada baris untuk toggle centang; klik header 'Pilih' untuk centang semua.",
+            Dock      = DockStyle.Fill,
+            ForeColor = AppTheme.Text1,
+            BackColor = Color.Transparent,
+            Font      = AppTheme.FontSmall,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding   = new Padding(8, 0, 0, 0),
+            AutoEllipsis = true,
+        };
+        pnlHint.Controls.Add(lblHintBanner);
+
         // Grid
         dgv = new DataGridView { Dock = DockStyle.Fill };
         AppTheme.StyleGrid(dgv);
         // ReadOnly diset per-column supaya kolom "Pilih" (checkbox) tetap editable
         // sementara kolom lain tidak bisa diedit.
         dgv.ReadOnly = false;
-        // Checkbox di paling kiri untuk multi-select compose surat penawaran gabungan
-        dgv.Columns.Add(new DataGridViewCheckBoxColumn { Name = "ColPick", HeaderText = "Pilih", FillWeight = 6, ReadOnly = false });
+        // Checkbox di paling kiri untuk multi-select compose surat penawaran gabungan.
+        // HeaderText "Pilih ☐" → akan kita toggle jadi "Pilih ☑" via ColumnHeaderMouseClick.
+        dgv.Columns.Add(new DataGridViewCheckBoxColumn { Name = "ColPick", HeaderText = "Pilih ☐", FillWeight = 7, ReadOnly = false, ToolTipText = "Klik header untuk centang/batalkan semua" });
         dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColNo",      HeaderText = "No. Estimasi",  FillWeight = 18, ReadOnly = true });
         dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColClient",  HeaderText = "Klien",         FillWeight = 20, ReadOnly = true });
         dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColCompany", HeaderText = "Perusahaan",    FillWeight = 20, ReadOnly = true });
@@ -87,7 +131,33 @@ public class EstimationHistoryForm : Form
             if (e.RowIndex >= 0 && dgv.Columns[e.ColumnIndex].Name == "ColPick")
                 dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
         };
-        dgv.CellValueChanged += (s, e) => UpdateCombineButtonState();
+        dgv.CellValueChanged += (s, e) =>
+        {
+            if (e.RowIndex >= 0) UpdateRowHighlight(dgv.Rows[e.RowIndex]);
+            UpdateCombineButtonState();
+        };
+        // Row-click toggle: klik di mana saja pada baris (selain header) → toggle checkbox.
+        // Lebih natural daripada user harus presisi klik kotak checkbox kecil.
+        // Skip kolom Pilih sendiri (sudah ditangani CellContentClick) dan double-click
+        // (yang artinya buka detail estimasi via Dgv_CellDoubleClick).
+        dgv.CellClick += (s, e) =>
+        {
+            if (e.RowIndex < 0 || _bulkToggling) return;
+            // Kalau user klik kolom Pilih, biarkan CellContentClick yang handle
+            if (dgv.Columns[e.ColumnIndex].Name == "ColPick") return;
+            var row = dgv.Rows[e.RowIndex];
+            if (row.IsNewRow) return;
+            var cell = row.Cells["ColPick"];
+            bool current = cell.Value is bool b && b;
+            cell.Value = !current;
+            // Tidak perlu CommitEdit di sini — assignment Value langsung mem-fire CellValueChanged.
+        };
+        // Header-click toggle: klik header "Pilih" → centang/batal-pilih semua baris yang sedang tampil.
+        dgv.ColumnHeaderMouseClick += (s, e) =>
+        {
+            if (e.ColumnIndex < 0 || dgv.Columns[e.ColumnIndex].Name != "ColPick") return;
+            ToggleAllVisibleRows();
+        };
 
         // Bottom buttons
         var pnlBottom = new Panel { Dock = DockStyle.Bottom, Height = 76, BackColor = AppTheme.SidebarBg, Padding = new Padding(12) };
@@ -96,43 +166,105 @@ public class EstimationHistoryForm : Form
         var btnLoad = new Button { Text = "✏ Edit Estimasi", Location = new Point(12, 10), Width = 150, Height = 36 };
         AppTheme.StyleButton(btnLoad, AppTheme.Primary, Color.White);
         btnLoad.Click += BtnLoad_Click;
+        _toolTip.SetToolTip(btnLoad, "Buka estimasi yang dipilih (baris dengan kursor) untuk diedit.");
 
         var btnDelete = new Button { Text = "🗑 Hapus", Location = new Point(174, 10), Width = 100, Height = 36 };
         AppTheme.StyleButton(btnDelete, AppTheme.Danger, Color.White);
         btnDelete.Click += BtnDelete_Click;
+        _toolTip.SetToolTip(btnDelete, "Hapus estimasi yang dipilih (baris dengan kursor).");
 
         var btnChangeStatus = new Button { Text = "✏ Ubah Status", Location = new Point(286, 10), Width = 140, Height = 36 };
         AppTheme.StyleButton(btnChangeStatus, AppTheme.Bg2, AppTheme.Text2);
         btnChangeStatus.Click += BtnChangeStatus_Click;
 
-        var btnExport = new Button { Text = "📄 Export PDF", Location = new Point(438, 10), Width = 130, Height = 36 };
+        // Split-button "Export ▾" — dropdown menu dengan 4 format: PDF Formal/Modern, Word, Excel
+        var btnExport = new Button { Text = "📄 Export ▾", Location = new Point(438, 10), Width = 130, Height = 36 };
         AppTheme.StyleButton(btnExport, AppTheme.Brand500, Color.White);
-        btnExport.Click += BtnExport_Click;
+        var exportMenu = new ContextMenuStrip { BackColor = AppTheme.Bg1, ForeColor = AppTheme.Text1 };
+        exportMenu.Items.Add(new ToolStripMenuItem("📄 Export PDF (Surat Formal)", null, (s, e) => BtnExport_Click(s, e)) { ForeColor = AppTheme.Text1 });
+        exportMenu.Items.Add(new ToolStripMenuItem("📝 Export Word (.docx)", null, BtnExportWord_Click) { ForeColor = AppTheme.Text1 });
+        exportMenu.Items.Add(new ToolStripMenuItem("📊 Export Excel (.xlsx)", null, BtnExportExcel_Click) { ForeColor = AppTheme.Text1 });
+        exportMenu.Items.Add(new ToolStripSeparator());
+        exportMenu.Items.Add(new ToolStripMenuItem("📊 Export CSV (round-trip)", null, BtnExportCsv_Click) { ForeColor = AppTheme.Text1 });
+        btnExport.Click += (s, e) => exportMenu.Show(btnExport, new Point(0, btnExport.Height));
+        _toolTip.SetToolTip(btnExport, "Export estimasi terpilih ke PDF / Word / Excel / CSV.");
 
         // Tombol baru: gabungkan beberapa estimasi (yang dicentang) → satu surat
-        btnCombine = new Button { Text = "📑 Penawaran Gabungan", Location = new Point(580, 10), Width = 180, Height = 36, Enabled = false };
+        btnCombine = new Button { Text = "📑 Penawaran Gabungan", Location = new Point(580, 10), Width = 200, Height = 36, Enabled = false };
         AppTheme.StyleButton(btnCombine, AppTheme.Brand500, Color.White);
         btnCombine.Click += BtnCombine_Click;
+        _toolTip.SetToolTip(btnCombine, "Centang minimal 2 estimasi dulu di kolom 'Pilih' (kiri tabel).");
 
-        var btnExportCsv = new Button { Text = "📊 Export CSV", Location = new Point(772, 10), Width = 130, Height = 36 };
-        AppTheme.StyleButton(btnExportCsv, AppTheme.Bg3, AppTheme.Text1);
-        btnExportCsv.Click += BtnExportCsv_Click;
-
-        var btnImportCsv = new Button { Text = "📥 Import CSV", Location = new Point(914, 10), Width = 130, Height = 36 };
+        var btnImportCsv = new Button { Text = "📥 Import CSV", Location = new Point(790, 10), Width = 130, Height = 36 };
         AppTheme.StyleButton(btnImportCsv, AppTheme.Bg3, AppTheme.Text1);
         btnImportCsv.Click += BtnImportCsv_Click;
+        _toolTip.SetToolTip(btnImportCsv, "Restore estimasi dari file CSV (round-trip dari Export CSV).");
 
-        var lblHint = AppTheme.MakeLabel("Centang kotak untuk Penawaran Gabungan; klik 2x baris untuk edit.", AppTheme.FontSmall, AppTheme.TextMuted);
-        lblHint.Location = new Point(12, 44);
-        lblHint.AutoSize = true;
+        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnCombine, btnImportCsv });
 
-        pnlBottom.Controls.AddRange(new Control[] { btnLoad, btnDelete, btnChangeStatus, btnExport, btnCombine, btnExportCsv, btnImportCsv, lblHint });
-
+        // Urutan Add penting karena DockStyle.Top/Fill mengikuti urutan terbalik:
+        // dgv (Fill) → pnlHint (Top, di atas dgv) → pnlFilter (Top, paling atas) → pnlBottom (Bottom).
         Controls.Add(dgv);
+        Controls.Add(pnlHint);
         Controls.Add(pnlFilter);
         Controls.Add(pnlBottom);
 
         Load += async (s, e) => await LoadDataAsync();
+    }
+
+    /// <summary>Toggle centang semua baris yang sedang tampil di grid (setelah filter).</summary>
+    private void ToggleAllVisibleRows()
+    {
+        _bulkToggling = true;
+        try
+        {
+            // Tentukan target state: kalau ada yang BELUM tercentang → centang semua,
+            // kalau semua sudah tercentang → batal pilih semua.
+            bool anyUnchecked = false;
+            int rowCount = 0;
+            foreach (DataGridViewRow row in dgv.Rows)
+            {
+                if (row.IsNewRow) continue;
+                rowCount++;
+                var v = row.Cells["ColPick"].Value;
+                if (!(v is bool b && b)) { anyUnchecked = true; break; }
+            }
+            bool targetState = anyUnchecked;  // true=centang semua, false=batal pilih
+            foreach (DataGridViewRow row in dgv.Rows)
+            {
+                if (row.IsNewRow) continue;
+                row.Cells["ColPick"].Value = targetState;
+                UpdateRowHighlight(row);
+            }
+            // Update header: ☑ kalau ada yang ke-pilih, ☐ kalau kosong
+            dgv.Columns["ColPick"].HeaderText = targetState && rowCount > 0 ? "Pilih ☑" : "Pilih ☐";
+        }
+        finally
+        {
+            _bulkToggling = false;
+            UpdateCombineButtonState();
+        }
+    }
+
+    /// <summary>Beri highlight visual pada baris yang ter-centang agar mudah dilihat.</summary>
+    private void UpdateRowHighlight(DataGridViewRow row)
+    {
+        if (row.IsNewRow) return;
+        bool picked = row.Cells["ColPick"].Value is bool b && b;
+        // Brand500 dengan alpha rendah → jadi accent halus di atas Bg1 (sidebar bg)
+        if (picked)
+        {
+            row.DefaultCellStyle.BackColor = AppTheme.Bg3;          // lebih terang dari Bg2 → kelihatan
+            row.DefaultCellStyle.ForeColor = AppTheme.Text1;
+            row.DefaultCellStyle.SelectionBackColor = AppTheme.Brand500;
+        }
+        else
+        {
+            // Reset ke default — biarkan AlternatingRowsDefaultCellStyle ambil alih
+            row.DefaultCellStyle.BackColor = Color.Empty;
+            row.DefaultCellStyle.ForeColor = Color.Empty;
+            row.DefaultCellStyle.SelectionBackColor = Color.Empty;
+        }
     }
 
     private async Task LoadDataAsync()
@@ -187,6 +319,25 @@ public class EstimationHistoryForm : Form
         btnCombine.Text = picked >= 2
             ? $"📑 Penawaran Gabungan ({picked})"
             : "📑 Penawaran Gabungan";
+        // Tooltip yang adaptif: kasih instruksi jelas kalau belum cukup centang
+        if (_toolTip != null)
+        {
+            _toolTip.SetToolTip(btnCombine, picked >= 2
+                ? $"Buat 1 surat penawaran gabungan dari {picked} estimasi yang dicentang."
+                : (picked == 1
+                    ? "Centang minimal 1 estimasi lagi (total ≥ 2) di kolom 'Pilih'."
+                    : "Centang minimal 2 estimasi dulu di kolom 'Pilih' (paling kiri tabel)."));
+        }
+        // Update header text agar reflect state global
+        if (dgv?.Columns["ColPick"] != null && dgv.Rows.Count > 0)
+        {
+            int total = 0;
+            foreach (DataGridViewRow row in dgv.Rows) if (!row.IsNewRow) total++;
+            dgv.Columns["ColPick"].HeaderText =
+                picked == 0 ? "Pilih ☐"
+                : picked == total ? "Pilih ☑"
+                : $"Pilih ({picked})";
+        }
     }
 
     /// <summary>Ambil ID estimasi yang baris-nya ter-centang oleh user.</summary>
@@ -339,6 +490,176 @@ public class EstimationHistoryForm : Form
     }
 
     /// <summary>
+    /// Helper: ambil estimation yang sedang di-highlight di grid (1 baris saja).
+    /// Sama logic dengan BtnExport_Click — return null kalau tidak valid.
+    /// </summary>
+    private Estimation? GetSelectedEstimation()
+    {
+        if (dgv.CurrentRow == null) return null;
+        if (dgv.CurrentRow.Cells["ColId"].Value is not int id) return null;
+        return _allEstimations.FirstOrDefault(x => x.EstimationId == id);
+    }
+
+    /// <summary>
+    /// Build kumpulan setting (dari DB) yang dipakai writer.
+    /// Empty dict kalau context tidak tersedia (mode terbatas).
+    /// </summary>
+    private Dictionary<string, string> LoadSettingsDict()
+        => _context != null
+            ? _context.Settings.ToDictionary(s => s.SettingKey, s => s.SettingValue ?? "")
+            : new Dictionary<string, string>();
+
+    /// <summary>
+    /// Export estimasi terpilih ke Word .docx — file editable, bisa diedit
+    /// kolom/susunan/format di Microsoft Word setelah generate.
+    /// </summary>
+    private void BtnExportWord_Click(object? sender, EventArgs e)
+    {
+        var est = GetSelectedEstimation();
+        if (est == null)
+        {
+            MessageBox.Show("Pilih estimasi terlebih dahulu (klik baris di tabel).",
+                "Perhatian", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Simpan Penawaran sebagai Word",
+            Filter     = "Word Documents (*.docx)|*.docx",
+            FileName   = SanitizeFilename($"Penawaran_{est.EstimationNumber}_{est.ClientName}_{DateTime.Now:yyyyMMdd}.docx"),
+            DefaultExt = "docx",
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var marginPct = est.MarginPercent != 0 ? est.MarginPercent
+                : (est.SubTotal > 0 ? Math.Round(est.Margin / est.SubTotal * 100, 1) : 0);
+            var taxBase   = est.SubTotal + est.Margin + est.ShippingCost;
+            var taxPct    = taxBase > 0 ? Math.Round(est.Tax / taxBase * 100, 1) : 0;
+            var pphPct    = est.PPhPercent;
+
+            var items = est.Details.Select(d => new WordLetterExport.LineItem(
+                d.Product?.ReferenceCode ?? "—",
+                d.Product?.ProductName   ?? "—",
+                d.Product?.Vendor        ?? "",
+                string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                d.Quantity,
+                string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                d.UnitPrice,
+                d.LineTotalPrice)).ToList();
+
+            WordLetterExport.Generate(
+                outputPath:       sfd.FileName,
+                estimationNumber: !string.IsNullOrWhiteSpace(est.NomorSurat) ? est.NomorSurat : est.EstimationNumber,
+                clientName:       est.ClientName,
+                contactPhone:     est.ContactPhone,
+                company:          est.Company,
+                address:          est.Address,
+                perihal:          est.ProjectName,
+                createdDate:      est.CreatedDate,
+                notes:            est.Notes ?? "",
+                items:            items,
+                subtotal:         est.SubTotal,
+                marginAmount:     est.Margin,
+                shippingCost:     est.ShippingCost,
+                taxPercent:       taxPct,
+                taxAmount:        est.Tax,
+                pphPercent:       pphPct,
+                pphAmount:        est.PPh,
+                total:            est.TotalPrice,
+                settings:         LoadSettingsDict());
+
+            var open = MessageBox.Show(
+                $"File Word berhasil dibuat:\n{sfd.FileName}\n\nBuka file sekarang?",
+                "Export Word Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export Word:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
+    /// Export estimasi terpilih ke Excel .xlsx — file editable dengan SUM
+    /// formula otomatis. User bisa edit Qty/Harga dan auto-recalc.
+    /// </summary>
+    private void BtnExportExcel_Click(object? sender, EventArgs e)
+    {
+        var est = GetSelectedEstimation();
+        if (est == null)
+        {
+            MessageBox.Show("Pilih estimasi terlebih dahulu (klik baris di tabel).",
+                "Perhatian", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Simpan Penawaran sebagai Excel",
+            Filter     = "Excel Workbook (*.xlsx)|*.xlsx",
+            FileName   = SanitizeFilename($"Penawaran_{est.EstimationNumber}_{est.ClientName}_{DateTime.Now:yyyyMMdd}.xlsx"),
+            DefaultExt = "xlsx",
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var marginPct = est.MarginPercent != 0 ? est.MarginPercent
+                : (est.SubTotal > 0 ? Math.Round(est.Margin / est.SubTotal * 100, 1) : 0);
+            var taxBase   = est.SubTotal + est.Margin + est.ShippingCost;
+            var taxPct    = taxBase > 0 ? Math.Round(est.Tax / taxBase * 100, 1) : 0;
+            var pphPct    = est.PPhPercent;
+
+            var items = est.Details.Select(d => new ExcelLetterExport.LineItem(
+                d.Product?.ReferenceCode ?? "—",
+                d.Product?.ProductName   ?? "—",
+                d.Product?.Vendor        ?? "",
+                string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                d.Quantity,
+                string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                d.UnitPrice,
+                d.LineTotalPrice)).ToList();
+
+            ExcelLetterExport.Generate(
+                outputPath:       sfd.FileName,
+                estimationNumber: !string.IsNullOrWhiteSpace(est.NomorSurat) ? est.NomorSurat : est.EstimationNumber,
+                clientName:       est.ClientName,
+                contactPhone:     est.ContactPhone,
+                company:          est.Company,
+                address:          est.Address,
+                perihal:          est.ProjectName,
+                createdDate:      est.CreatedDate,
+                notes:            est.Notes ?? "",
+                items:            items,
+                subtotal:         est.SubTotal,
+                marginAmount:     est.Margin,
+                shippingCost:     est.ShippingCost,
+                taxPercent:       taxPct,
+                taxAmount:        est.Tax,
+                pphPercent:       pphPct,
+                pphAmount:        est.PPh,
+                total:            est.TotalPrice,
+                settings:         LoadSettingsDict());
+
+            var open = MessageBox.Show(
+                $"File Excel berhasil dibuat:\n{sfd.FileName}\n\nBuka file sekarang?",
+                "Export Excel Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export Excel:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>
     /// Bangun surat penawaran gabungan dari estimasi-estimasi yang ter-centang.
     /// Order panel mengikuti urutan baris di grid (terlama → terbaru sesuai filter).
     /// </summary>
@@ -383,12 +704,29 @@ public class EstimationHistoryForm : Form
         // Customer info ambil dari panel pertama
         var first = pickedEsts[0];
 
+        // ─────────────────────────────────────────────────────────────────
+        // Format Word & Excel: minta save path langsung (bukan preview-then-save
+        // seperti PDF), karena file langsung editable di Word/Excel.
+        // Format PDF tetap pakai preview-then-save flow.
+        // ─────────────────────────────────────────────────────────────────
+        var fmt = dlg.SelectedFormat;
+        if (fmt == CombineEstimationsDialog.PdfFormat.Word)
+        {
+            GenerateCombinedWord(pickedEsts, first, summary, dlg.NomorSurat, settings);
+            return;
+        }
+        if (fmt == CombineEstimationsDialog.PdfFormat.Excel)
+        {
+            GenerateCombinedExcel(pickedEsts, first, summary, dlg.NomorSurat, settings);
+            return;
+        }
+
         var tempPath = Path.Combine(Path.GetTempPath(),
             $"SuratGabungan_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
 
         try
         {
-            if (dlg.SelectedFormat == CombineEstimationsDialog.PdfFormat.Formal)
+            if (fmt == CombineEstimationsDialog.PdfFormat.Formal)
             {
                 var panels = pickedEsts.Select(est =>
                     new PdfLetterExport.CombinedPanel(
@@ -421,6 +759,7 @@ public class EstimationHistoryForm : Form
             }
             else
             {
+                // Modern PDF (default fallback)
                 var panels = pickedEsts.Select(est =>
                     new PdfQuotationExport.CombinedPanel(
                         est.EstimationNumber,
@@ -485,6 +824,122 @@ public class EstimationHistoryForm : Form
                 await Task.Delay(30_000);
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
             });
+        }
+    }
+
+    /// <summary>Subroutine BtnCombine_Click — output Word .docx.</summary>
+    private void GenerateCombinedWord(List<Estimation> pickedEsts, Estimation first,
+        CombinedQuotationCalculator.CombinedSummary summary, string nomorSurat,
+        Dictionary<string, string> settings)
+    {
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Simpan Penawaran Gabungan sebagai Word",
+            Filter     = "Word Documents (*.docx)|*.docx",
+            FileName   = SanitizeFilename($"SuratGabungan_{nomorSurat}_{DateTime.Now:yyyyMMdd}.docx"),
+            DefaultExt = "docx",
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var panels = pickedEsts.Select(est =>
+                new WordLetterExport.CombinedPanel(
+                    est.EstimationNumber,
+                    est.ProjectName,
+                    est.Details.Select(d => new WordLetterExport.LineItem(
+                        d.Product?.ReferenceCode ?? "—",
+                        d.Product?.ProductName   ?? "—",
+                        d.Product?.Vendor        ?? "",
+                        string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                        d.Quantity,
+                        string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                        d.UnitPrice,
+                        d.LineTotalPrice)).ToList()))
+                .ToList();
+
+            WordLetterExport.GenerateCombined(
+                outputPath:   sfd.FileName,
+                nomorSurat:   nomorSurat,
+                clientName:   first.ClientName,
+                contactPhone: first.ContactPhone,
+                company:      first.Company,
+                address:      first.Address,
+                perihal:      first.ProjectName,
+                createdDate:  DateTime.UtcNow,
+                notes:        first.Notes ?? "",
+                panels:       panels,
+                summary:      summary,
+                settings:     settings);
+
+            var open = MessageBox.Show(
+                $"File Word Penawaran Gabungan ({pickedEsts.Count} panel) berhasil dibuat:\n{sfd.FileName}\n\nBuka sekarang?",
+                "Export Word Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export Word gabungan:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    /// <summary>Subroutine BtnCombine_Click — output Excel .xlsx.</summary>
+    private void GenerateCombinedExcel(List<Estimation> pickedEsts, Estimation first,
+        CombinedQuotationCalculator.CombinedSummary summary, string nomorSurat,
+        Dictionary<string, string> settings)
+    {
+        using var sfd = new SaveFileDialog
+        {
+            Title      = "Simpan Penawaran Gabungan sebagai Excel",
+            Filter     = "Excel Workbook (*.xlsx)|*.xlsx",
+            FileName   = SanitizeFilename($"SuratGabungan_{nomorSurat}_{DateTime.Now:yyyyMMdd}.xlsx"),
+            DefaultExt = "xlsx",
+        };
+        if (sfd.ShowDialog() != DialogResult.OK) return;
+
+        try
+        {
+            var panels = pickedEsts.Select(est =>
+                new ExcelLetterExport.CombinedPanel(
+                    est.EstimationNumber,
+                    est.ProjectName,
+                    est.Details.Select(d => new ExcelLetterExport.LineItem(
+                        d.Product?.ReferenceCode ?? "—",
+                        d.Product?.ProductName   ?? "—",
+                        d.Product?.Vendor        ?? "",
+                        string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section,
+                        d.Quantity,
+                        string.IsNullOrWhiteSpace(d.Satuan) ? "pcs" : d.Satuan,
+                        d.UnitPrice,
+                        d.LineTotalPrice)).ToList()))
+                .ToList();
+
+            ExcelLetterExport.GenerateCombined(
+                outputPath:   sfd.FileName,
+                nomorSurat:   nomorSurat,
+                clientName:   first.ClientName,
+                contactPhone: first.ContactPhone,
+                company:      first.Company,
+                address:      first.Address,
+                perihal:      first.ProjectName,
+                createdDate:  DateTime.UtcNow,
+                notes:        first.Notes ?? "",
+                panels:       panels,
+                summary:      summary,
+                settings:     settings);
+
+            var open = MessageBox.Show(
+                $"File Excel Penawaran Gabungan ({pickedEsts.Count} panel) berhasil dibuat:\n{sfd.FileName}\n\nBuka sekarang?",
+                "Export Excel Selesai", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (open == DialogResult.Yes)
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(sfd.FileName) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Gagal export Excel gabungan:\n{ex.Message}", "Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
