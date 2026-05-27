@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LicenseKeyGenGui
+    GUI version of LicenseKeyGen with the same crypto and same output, but
+    using a Windows Forms dialog instead of CLI flags. Intended for PT TTS
+    admins who do not want to memorize the long `dotnet run` command.
+
+    Wraps LicenseIssuer (in the LicenseKeyGen project). No new crypto code
+    here, only UI + clipboard + WhatsApp deep-link.
+
+    Internal tool: NEVER ship to customers.
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>PanelCalculator.Tools.LicenseKeyGenGui</RootNamespace>
+    <AssemblyName>LicenseKeyGenGui</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Share LicenseIssuer (and transitively LicensePayload from Core) -->
+    <ProjectReference Include="..\LicenseKeyGen\LicenseKeyGen.csproj" />
+  </ItemGroup>
+
+</Project>
