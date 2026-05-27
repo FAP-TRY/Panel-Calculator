@@ -47,7 +47,9 @@ public class ShellForm : Form
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
 
-        Text          = "Kalkulator Panel Tritunggal Swarna";
+        // Version tampil di title bar supaya user/support gampang verify
+        // versi instalasi mereka — match lblVersion di top bar + About dialog.
+        Text          = $"Kalkulator Panel Tritunggal Swarna — v{UpdateService.AppVersion}";
         MinimumSize   = new Size(1150, 700);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor     = AppTheme.Background;
@@ -147,15 +149,20 @@ public class ShellForm : Form
         _btnUpdate.FlatAppearance.MouseOverBackColor = AppTheme.Success400;
         _btnUpdate.Click += BtnUpdate_Click;
 
-        // Version label (shows current version on hover area)
+        // Version label — diperbesar + dipertajam warnanya supaya user gampang
+        // verify versi yang terinstall (request dari PT TTS: "Tambahkan versi
+        // untuk setiap perubahan agar saya tahu instalasi terbaru versi berapa").
         var lblVersion = new Label
         {
             Text      = $"v{UpdateService.AppVersion}",
-            Font      = AppTheme.FontSmall,
-            ForeColor = AppTheme.Text3,
+            Font      = new Font(AppTheme.FontSmall.FontFamily, 9F, FontStyle.Bold),
+            ForeColor = AppTheme.Text1,
+            BackColor = AppTheme.Bg2,
             AutoSize  = false,
-            TextAlign = ContentAlignment.MiddleRight,
-            Width     = 56
+            TextAlign = ContentAlignment.MiddleCenter,
+            Width     = 78,
+            Padding   = new Padding(4, 2, 4, 2),
+            BorderStyle = BorderStyle.FixedSingle,
         };
 
         // Position: logout → update → version → userinfo

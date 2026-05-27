@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.5
+- **Versi saat ini:** v1.2.6
 
 ---
 
@@ -95,7 +95,30 @@ import sqlite3, csv
   - v1.2.2: `Application.DoEvents()` menyebabkan autoclose saat download
   - v1.2.3: DPI scaling — semua form pakai `AutoScaleMode.Dpi` + `PerMonitorV2`
   - v1.2.4: Koreksi harga katalog Himel & FORT ke harga list asli (tanpa diskon)
-  - v1.2.5: Security hardening (DB encrypt, update SHA-256 verify, Obfuscar, BCrypt, license binding) + PDF/CSV format polish
+  - v1.2.5: Security hardening (DB encrypt, update SHA-256 verify, Obfuscar, BCrypt, license binding) + PDF/CSV format polish + multi-panel surat penawaran + installer fix
+  - v1.2.6: Auto-refresh dropdown kategori/merk setelah import + UX Penawaran Gabungan + Export Word (.docx) & Excel (.xlsx) + versi tampil di title bar & header + installer password baru
+
+### Kebijakan Versioning (sejak v1.2.6)
+
+**Setiap rebuild EXE / installer yang di-distribusi WAJIB bump patch version.**
+
+Tujuan: customer dan support bisa verify dengan tepat versi mana yang
+terinstall. Mereka cek di title bar app: "Kalkulator Panel ... — v1.2.6"
+atau di header top-bar (box berisi `v1.2.6`).
+
+Aturan:
+- **Patch bump (v1.2.X → v1.2.X+1)**: bug fix, polish, UX improvement,
+  fitur kecil. Setiap kali kita rebuild & distribusi ke customer.
+- **Minor bump (v1.X.0 → v1.X+1.0)**: fitur besar (misal modul baru,
+  arsitektur baru, breaking change kecil).
+- **Major bump (vX.0.0)**: redesign besar, schema DB tidak kompatibel
+  dengan versi lama, breaking change.
+
+Yang HARUS diupdate setiap bump:
+1. `PanelCalculator.WinForms/Services/UpdateService.cs` → `AppVersion`
+2. `PanelCalculator.iss` → `#define AppVersion` + `OutputBaseFilename`
+3. `Installer/PanelCalculatorSetup.iss` → `#define MyAppVersion`
+4. `CLAUDE.md` → "Versi saat ini" + changelog entry baru di list di atas
 
 ### Cara Rilis Versi Baru
 

@@ -23,7 +23,7 @@ namespace PanelCalculator.WinForms.Services;
 public static class UpdateService
 {
     // ── Version — bump this on every release ─────────────────────────────
-    public const string AppVersion = "1.2.5";
+    public const string AppVersion = "1.2.6";
 
     // ── GitHub configuration ──────────────────────────────────────────────
     private const string Owner    = "FAP-TRY";
