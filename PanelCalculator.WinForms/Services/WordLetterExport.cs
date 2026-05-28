@@ -184,6 +184,7 @@ public static class WordLetterExport
         WriteSignatureBlock(doc, offerLocation, createdDate, signerName, signerTitle);
 
         // ── Halaman Rincian Material per panel ────────────────────────────
+        // Revisi 2026-05-28 (fix #4): consistent heading layout.
         for (int pi = 0; pi < panels.Count; pi++)
         {
             doc.InsertParagraph().InsertPageBreakAfterSelf();
@@ -193,8 +194,15 @@ public static class WordLetterExport
                 ? panel.ProjectName!.Trim()
                 : panel.EstimationNumber;
 
-            doc.InsertParagraph("Rincian Material").Bold().FontSize(14).Alignment = Alignment.center;
-            doc.InsertParagraph(heading).Bold().FontSize(11).SpacingBefore(8).SpacingAfter(4);
+            // Heading 1: "Rincian Material" — center, bold, 14pt
+            var titlePara = doc.InsertParagraph("Rincian Material").Bold().FontSize(14);
+            titlePara.Alignment = Alignment.center;
+            titlePara.SpacingAfter(12);
+
+            // Heading 2: panel name — left-aligned, bold, 11pt
+            var subPara = doc.InsertParagraph(heading).Bold().FontSize(11);
+            subPara.Alignment = Alignment.left;
+            subPara.SpacingBefore(0).SpacingAfter(6);
 
             WriteRincianMaterialTable(doc, panel.Items);
         }
@@ -208,11 +216,14 @@ public static class WordLetterExport
     private static void SetupPage(DocX doc)
     {
         doc.PageLayout.Orientation = XOrientation.Portrait;
-        // Margins (1pt = 1/72 inch; 1cm = 28.35pt)
-        doc.MarginTop    = 85f;   // 3.0cm
-        doc.MarginBottom = 43f;   // 1.5cm
-        doc.MarginLeft   = 71f;   // 2.5cm
-        doc.MarginRight  = 43f;   // 1.5cm
+        // Margins (revisi 2026-05-28 — fix #1): tambah 5mm breathing room
+        // antara konten body vs banner letterhead atas/bawah.
+        //   top = 3.5 cm (99 pt)   ← sebelumnya 3.0 cm (85 pt)
+        //   bot = 2.0 cm (57 pt)   ← sebelumnya 1.5 cm (43 pt)
+        doc.MarginTop    = 99f;
+        doc.MarginBottom = 57f;
+        doc.MarginLeft   = 71f;   // 2.5cm (unchanged)
+        doc.MarginRight  = 43f;   // 1.5cm (unchanged)
     }
 
     /// <summary>
@@ -303,32 +314,46 @@ public static class WordLetterExport
             leftCellParas[0].RemoveText(0, leftCellParas[0].Text.Length);
         }
 
-        // ── Right: Kepada / address / Up. ───────────────────────────────
+        // ── Right: Kepada / address / Up. ─── RIGHT-ALIGNED (fix #2)
         var rightCell = t.Rows[0].Cells[1];
         var firstPara = rightCell.Paragraphs.FirstOrDefault() ?? rightCell.InsertParagraph();
         firstPara.RemoveText(0, firstPara.Text.Length);
+        firstPara.Alignment = Alignment.right;
         firstPara.Append("Kepada:").FontSize(10);
         firstPara.SpacingAfter(2);
 
         bool hasCompany = !string.IsNullOrWhiteSpace(company);
         if (hasCompany)
-            rightCell.InsertParagraph(company!).Bold().FontSize(10);
+        {
+            var p = rightCell.InsertParagraph(company!).Bold().FontSize(10);
+            p.Alignment = Alignment.right;
+        }
         else if (!string.IsNullOrWhiteSpace(clientName))
-            rightCell.InsertParagraph(clientName).Bold().FontSize(10);
+        {
+            var p = rightCell.InsertParagraph(clientName).Bold().FontSize(10);
+            p.Alignment = Alignment.right;
+        }
 
         if (!string.IsNullOrWhiteSpace(address))
             foreach (var line in address.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
-                rightCell.InsertParagraph(line.Trim()).FontSize(10);
+            {
+                var p = rightCell.InsertParagraph(line.Trim()).FontSize(10);
+                p.Alignment = Alignment.right;
+            }
 
         if (!string.IsNullOrWhiteSpace(contactPhone))
-            rightCell.InsertParagraph($"Telp: {contactPhone}").FontSize(10);
+        {
+            var p = rightCell.InsertParagraph($"Telp: {contactPhone}").FontSize(10);
+            p.Alignment = Alignment.right;
+        }
 
         // "Up. <contact person>" hanya kalau clientName beda dari company
         if (hasCompany && !string.IsNullOrWhiteSpace(clientName) &&
             !string.Equals(clientName.Trim(), company!.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             rightCell.InsertParagraph("").FontSize(4);
-            rightCell.InsertParagraph($"Up. {clientName.Trim()}").FontSize(10);
+            var p = rightCell.InsertParagraph($"Up. {clientName.Trim()}").FontSize(10);
+            p.Alignment = Alignment.right;
         }
 
         doc.InsertTable(t);
@@ -401,24 +426,32 @@ public static class WordLetterExport
     // ══════════════════════════════════════════════════════════════════════
     //  SIGNATURE BLOCK
     // ══════════════════════════════════════════════════════════════════════
+    //
+    // Revisi 2026-05-28 (fix #3): semua paragraph signature block sekarang
+    // RIGHT-ALIGNED (sejajar dengan edge kanan tabel item & blok Kepada).
+    // Sebelumnya pakai 2-col table tapi text di dalam kolom kanan left-align
+    // → visual jadi terkesan "tengah halaman" karena kolom kanan ~50% width.
+    //
     private static void WriteSignatureBlock(DocX doc, string offerLocation,
         DateTime createdDate, string signerName, string signerTitle)
     {
         var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
         var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
 
-        // Right-aligned signature block — use a 2-col table for clean align
+        // 2-col table; kolom kanan lebih sempit + all content right-aligned.
         var t = doc.AddTable(1, 2);
         RemoveBorders(t);
-        t.SetColumnWidth(0, 4500);
-        t.SetColumnWidth(1, 5000);
+        t.SetColumnWidth(0, 5500);
+        t.SetColumnWidth(1, 4000);
 
         var rightCell = t.Rows[0].Cells[1];
         var firstPara = rightCell.Paragraphs.FirstOrDefault() ?? rightCell.InsertParagraph();
         firstPara.RemoveText(0, firstPara.Text.Length);
+        firstPara.Alignment = Alignment.right;
         firstPara.Append($"{city}, {dateStr}").FontSize(10);
 
-        rightCell.InsertParagraph("PT. Tritunggal Swarna").Bold().FontSize(10);
+        var ptPara = rightCell.InsertParagraph("PT. Tritunggal Swarna").Bold().FontSize(10);
+        ptPara.Alignment = Alignment.right;
 
         // ── Signature + stamp image overlay ──
         try
@@ -426,15 +459,9 @@ public static class WordLetterExport
             var sigBytes   = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.signature.png");
             var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
 
-            // Render signature, then immediately overlap with stamp on the
-            // same paragraph. DocX inline images go side-by-side; we use
-            // a single paragraph and rely on Word allowing images to overlap
-            // if their offsets are set. Simpler: place signature, then stamp
-            // alongside, accepting that the visual is "next to" rather than
-            // strictly overlapping. The handwritten signature already looks
-            // like a signature, and the stamp visually complements it.
             var imgPara = rightCell.InsertParagraph();
             imgPara.SpacingBefore(4);
+            imgPara.Alignment = Alignment.right;
 
             if (sigBytes != null)
             {
@@ -460,13 +487,21 @@ public static class WordLetterExport
         catch
         {
             // Reserve fixed space if assets missing
-            rightCell.InsertParagraph("").FontSize(38);
+            var blank = rightCell.InsertParagraph("").FontSize(38);
+            blank.Alignment = Alignment.right;
         }
 
         if (!string.IsNullOrWhiteSpace(signerName))
-            rightCell.InsertParagraph(signerName).Bold().FontSize(10).UnderlineStyle(UnderlineStyle.singleLine);
+        {
+            var p = rightCell.InsertParagraph(signerName).Bold().FontSize(10)
+                .UnderlineStyle(UnderlineStyle.singleLine);
+            p.Alignment = Alignment.right;
+        }
         if (!string.IsNullOrWhiteSpace(signerTitle))
-            rightCell.InsertParagraph(signerTitle).FontSize(10);
+        {
+            var p = rightCell.InsertParagraph(signerTitle).FontSize(10);
+            p.Alignment = Alignment.right;
+        }
 
         doc.InsertTable(t);
     }
@@ -474,6 +509,14 @@ public static class WordLetterExport
     // ══════════════════════════════════════════════════════════════════════
     //  RINCIAN MATERIAL — section divider rows
     // ══════════════════════════════════════════════════════════════════════
+    //
+    // Revisi 2026-05-28 (fix #4):
+    //   - Divider row sekarang MERGE 6 cols (pakai Row.MergeCells) supaya
+    //     teks "Incoming :" / "Outgoing :" / "Lainnya :" beneran span
+    //     seluruh table width seperti di screenshot user.
+    //   - Italic + bold pada divider text, bg lebih terang dari header.
+    //   - Alternating row color tetap (light gray vs white) untuk readability.
+    //
     private static void WriteRincianMaterialTable(DocX doc, IReadOnlyList<LineItem> items)
     {
         // Group by display section, preserving insertion order within each group
@@ -498,18 +541,30 @@ public static class WordLetterExport
 
         int rIdx = 1;
         int itemNo = 0;
+        var dividerBg = XColor.Parse(238, 243, 248);  // slightly lighter than header
         foreach (var grp in groups)
         {
-            // Divider row: bold section name in first cell, others blank
+            // Divider row: put text in cell[0], then merge cell[0..5] horizontally
             var dRow = t.Rows[rIdx++];
-            SetCell(dRow.Cells[0], "",                Alignment.left);
-            SetCell(dRow.Cells[1], grp.Key + " :",    Alignment.left, bold: true);
-            SetCell(dRow.Cells[2], "",                Alignment.left);
-            SetCell(dRow.Cells[3], "",                Alignment.left);
-            SetCell(dRow.Cells[4], "",                Alignment.center);
-            SetCell(dRow.Cells[5], "",                Alignment.center);
+
+            // Fill all 6 cells with divider bg color BEFORE merging
+            // (merge logic of DocX preserves first cell formatting).
             foreach (var c in dRow.Cells)
-                c.FillColor = XColor.Parse(232, 238, 246);
+                c.FillColor = dividerBg;
+
+            // Set the divider text (cell[0]) — bold + italic
+            var dPara = dRow.Cells[0].Paragraphs.FirstOrDefault()
+                        ?? dRow.Cells[0].InsertParagraph();
+            dPara.RemoveText(0, dPara.Text.Length);
+            dPara.Alignment = Alignment.left;
+            dPara.Append(grp.Key + " :").Bold().Italic().FontSize(9);
+
+            // Clear text in cells 1..5 (they'll be merged away but be safe)
+            for (int ci = 1; ci < 6; ci++)
+                SetCell(dRow.Cells[ci], "", Alignment.left);
+
+            // Merge cell 0 across all 6 cols (start=0, end=5)
+            try { dRow.MergeCells(0, 5); } catch { /* DocX may throw if already merged; safe to ignore */ }
 
             foreach (var x in grp.OrderBy(g => g.Idx))
             {
@@ -521,6 +576,14 @@ public static class WordLetterExport
                 SetCell(r.Cells[3], x.Item.ReferenceCode,       Alignment.left);
                 SetCell(r.Cells[4], x.Item.Satuan,              Alignment.center);
                 SetCell(r.Cells[5], x.Item.Quantity.ToString(), Alignment.center);
+
+                // Alternating row color: white vs light gray (#F8FAFC)
+                if (itemNo % 2 == 0)
+                {
+                    var altBg = XColor.Parse(248, 250, 252);
+                    foreach (var c in r.Cells)
+                        c.FillColor = altBg;
+                }
             }
         }
 

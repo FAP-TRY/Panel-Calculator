@@ -104,13 +104,14 @@ public static class PdfLetterExport
         // ── Letterhead background ─────────────────────────────────────────
         AttachLetterhead(pdf, settings);
 
-        // Margins match referensi DOCX:
-        //   top  = 3.0 cm (85 pt)  — di bawah logo header
-        //   bot  = 1.5 cm (43 pt)  — di atas footer alamat
+        // Margins (revisi 2026-05-28): tambah 5mm breathing room
+        // antara konten body vs banner letterhead atas/bawah.
+        //   top  = 3.5 cm (99 pt)  — di bawah logo header  + 5mm padding
+        //   bot  = 2.0 cm (57 pt)  — di atas footer alamat + 5mm padding
         //   left = 2.5 cm (71 pt)
         //   right= 1.5 cm (43 pt)
         using var doc = new Document(pdf, PageSize.A4);
-        doc.SetMargins(85f, 43f, 43f, 71f);
+        doc.SetMargins(99f, 43f, 57f, 71f);
 
         // Total panel = subtotal + margin (TANPA PPN — itu ditambahkan di bawah).
         // Untuk single panel, baris tabel ringkas = 1 baris dengan harga "satuan panel".
@@ -188,8 +189,10 @@ public static class PdfLetterExport
 
         AttachLetterhead(pdf, settings);
 
+        // Margins (revisi 2026-05-28): tambah 5mm breathing room
+        // antara konten body vs banner letterhead atas/bawah.
         using var doc = new Document(pdf, PageSize.A4);
-        doc.SetMargins(85f, 43f, 43f, 71f);
+        doc.SetMargins(99f, 43f, 57f, 71f);
 
         // Lampiran field menyebut "Rincian Material" karena halaman 2+ berisi rincian
         Page1Header(doc, reg, bold, nomorSurat,
@@ -238,12 +241,16 @@ public static class PdfLetterExport
                 ? panel.ProjectName!.Trim()
                 : panel.EstimationNumber;
 
-            // "Rincian Material" judul (center, bold, 14pt)
+            // Heading 1: "Rincian Material" (center, bold, 14pt) — sekali
+            // di awal page panel. Margin bawah 12pt sebelum sub-heading panel.
             doc.Add(P("Rincian Material", bold, 14, ColorDark)
-                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(6));
+                .SetTextAlignment(TextAlignment.CENTER)
+                .SetMarginTop(0).SetMarginBottom(12));
 
-            // Sub-heading: nama panel
-            doc.Add(P(heading, bold, 11, ColorDark).SetMarginBottom(4));
+            // Heading 2: nama panel (left-aligned, bold, 11pt). Sebelum table.
+            doc.Add(P(heading, bold, 11, ColorDark)
+                .SetTextAlignment(TextAlignment.LEFT)
+                .SetMarginTop(0).SetMarginBottom(6));
 
             AddRincianMaterialTable(doc, reg, bold, panel.Items);
         }
@@ -252,6 +259,12 @@ public static class PdfLetterExport
     // ══════════════════════════════════════════════════════════════════════
     //  PAGE-1 HEADER  (Nomor/Perihal/Lampiran ↔ Kepada/Address/Up.)
     // ══════════════════════════════════════════════════════════════════════
+    //
+    // Layout (revisi 2026-05-28 — fix #2):
+    //   Kolom kanan ("Kepada / PT / Address / Telp / Up.") sekarang
+    //   RIGHT-ALIGNED supaya rata kanan dengan edge kanan tabel item
+    //   di bawahnya (yang pakai UseAllAvailableWidth).
+    //
     private static void Page1Header(
         Document doc, PdfFont reg, PdfFont bold,
         string estNo,
@@ -269,22 +282,30 @@ public static class PdfLetterExport
         AddRef(leftRefTbl, "Lampiran", lampiranText, reg, bold);
         hdrTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl));
 
-        // ── RIGHT: Kepada / Address / Up. ──
+        // ── RIGHT: Kepada / Address / Up. ── RIGHT-ALIGNED
         bool hasCompany = !string.IsNullOrWhiteSpace(company);
-        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
-        rightCell.Add(P("Kepada:", reg, 10, ColorDark).SetMarginBottom(2));
+        var rightCell = new Cell()
+            .SetBorder(Border.NO_BORDER)
+            .SetTextAlignment(TextAlignment.RIGHT)        // cell-level right-align
+            .SetPaddingRight(0);                          // mepet edge kanan tabel
+        rightCell.Add(P("Kepada:", reg, 10, ColorDark)
+            .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(2));
 
         if (hasCompany)
-            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
+            rightCell.Add(P(company!, bold, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
         else if (!string.IsNullOrWhiteSpace(clientName))
-            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
+            rightCell.Add(P(clientName, bold, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
 
         if (!string.IsNullOrWhiteSpace(address))
             foreach (var line in address.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
-                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
+                rightCell.Add(P(line.Trim(), reg, 10, ColorDark)
+                    .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
 
         if (!string.IsNullOrWhiteSpace(contactPhone))
-            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
+            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
 
         // "Up. <contact person>" — di bawah alamat, baris kosong di atas.
         // Hanya dimunculkan kalau clientName MEMANG berbeda dari company name
@@ -294,7 +315,8 @@ public static class PdfLetterExport
             !string.Equals(clientName.Trim(), company!.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             rightCell.Add(P("", reg, 4, ColorDark).SetMarginTop(4).SetMarginBottom(0));
-            rightCell.Add(P($"Up. {clientName.Trim()}", reg, 10, ColorDark).SetMarginBottom(0));
+            rightCell.Add(P($"Up. {clientName.Trim()}", reg, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
         }
 
         hdrTbl.AddCell(rightCell);
@@ -368,6 +390,10 @@ public static class PdfLetterExport
     // the right vertical offset relative to that captured Y (so images
     // overlap the gap between "PT. Tritunggal Swarna" and "Kuntjoro Handoko").
     //
+    // Revisi 2026-05-28 (fix #3): block sekarang RIGHT-ALIGNED, sejajar
+    // dengan edge kanan tabel item & blok Kepada. Sebelumnya 50/50 cell
+    // dengan left-aligned content (visual jadi terkesan "tengah halaman").
+    //
     private static void AddSignatureBlock(
         Document doc, PdfDocument pdf, PdfFont reg, PdfFont bold,
         DateTime createdDate, string offerLocation, string signerName, string signerTitle)
@@ -383,26 +409,27 @@ public static class PdfLetterExport
         try
         {
             var r = doc.GetRenderer();
-            // r.GetCurrentArea() returns the current LayoutArea; null until
-            // first render. Force a renderer flush so we get a valid Y:
-            // simplest is to query CurrentArea AFTER an empty add. The
-            // calling code already flushed the closing paragraph, so we
-            // can read directly.
             var area = r?.GetCurrentArea();
             if (area != null)
                 yBefore = area.GetBBox().GetTop();
         }
         catch { /* renderer state unavailable — fall back below */ }
 
-        // Right-aligned signature block; left half empty
-        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 }))
+        // Right-aligned signature block: kolom 1 kosong, kolom 2 (lebih
+        // sempit) berisi semua signature content rata kanan ke edge tabel.
+        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 55, 45 }))
             .UseAllAvailableWidth().SetBorder(Border.NO_BORDER)
             .SetMarginTop(0);
         sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
 
-        var sigCell = new Cell().SetBorder(Border.NO_BORDER);
-        sigCell.Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(2));
-        sigCell.Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark).SetMarginBottom(0));
+        var sigCell = new Cell()
+            .SetBorder(Border.NO_BORDER)
+            .SetTextAlignment(TextAlignment.RIGHT)   // cell-level right-align
+            .SetPaddingRight(0);
+        sigCell.Add(P($"{city}, {dateStr}", reg, 10, ColorDark)
+            .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(2));
+        sigCell.Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark)
+            .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
 
         // Reserve vertical space for the signature+stamp overlay
         // (must be >= signature image height + small margin = ~100pt to fit cleanly)
@@ -410,9 +437,11 @@ public static class PdfLetterExport
         sigCell.Add(P("", reg, 1, ColorDark).SetMarginTop(SignatureGap).SetMarginBottom(0));
 
         if (!string.IsNullOrWhiteSpace(signerName))
-            sigCell.Add(P(signerName, bold, 10, ColorDark).SetMarginBottom(0).SetUnderline());
+            sigCell.Add(P(signerName, bold, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0).SetUnderline());
         if (!string.IsNullOrWhiteSpace(signerTitle))
-            sigCell.Add(P(signerTitle, reg, 10, ColorDark));
+            sigCell.Add(P(signerTitle, reg, 10, ColorDark)
+                .SetTextAlignment(TextAlignment.RIGHT));
 
         sigTbl.AddCell(sigCell);
         doc.Add(sigTbl);
@@ -424,59 +453,47 @@ public static class PdfLetterExport
             var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
             if (sigBytes == null && stampBytes == null) return;
 
-            // The signature should appear on the page that the last paragraph
-            // of the sig block landed on. Most often that's the same page as
-            // before doc.Add (the closing paragraph is small). If the renderer
-            // pushed to a new page (rare; happens when the page is nearly
-            // full), the closing block sits at the top of the new page and
-            // we should draw the overlay there.
             int pageAfter = pdf.GetNumberOfPages();
             var page      = pdf.GetPage(pageAfter);
             var pageSize  = page.GetPageSize();
             var canvas    = new PdfCanvas(page);
             float pageWidth = pageSize.GetWidth();
 
-            // Position the overlay at the gap reserved above the signer name.
-            // The signer name was drawn directly after the SignatureGap spacer,
-            // so it sits roughly `bottomMargin + 2 lines` above page bottom.
-            //
-            //   page bottom margin    ≈ 43 pt
-            //   jabatan line height   ≈ 14 pt
-            //   signerName underline  ≈ 14 pt
-            //   small padding         ≈  4 pt
-            // → signer name top edge  ≈ 75 pt from page bottom
-            // → overlay should sit ~ a bit above this, fully inside the gap.
-            //
-            // BUT we need to adjust if the block flowed onto a new page.
-            // Heuristic: if yBefore is null OR pageAfter != pageBefore, use
-            // the fallback constant. Otherwise compute baseY = yBefore - (height
-            // of date+PT TTS lines = 2*14 = 28).
+            // Right margin = 43pt (matches doc.SetMargins right). Body content
+            // right edge = pageWidth - 43.
+            const float rightMarginPt = 43f;
+            float contentRightEdge = pageWidth - rightMarginPt;
+
             float signerNameTopY;
             if (yBefore.HasValue && pageAfter == pageBefore)
             {
-                // We had a renderer position; estimate where signer name landed.
-                //   yBefore  = top of the area where sigTbl starts.
-                //   2 text lines used (date + PT TTS) before SignatureGap.
-                //   Then SignatureGap, then signer name.
                 signerNameTopY = yBefore.Value
                                 - 14f * 2f         // 2 lines of header text
                                 - SignatureGap;    // reserved gap
             }
             else
             {
-                // Fallback: assume signer name is near page bottom.
-                signerNameTopY = 43f + 28f + 4f;   // bottom margin + 2 lines + pad
+                // Fallback: assume signer name is near page bottom + new bottom margin
+                signerNameTopY = 57f + 28f + 4f;   // bottom margin (57) + 2 lines + pad
             }
 
-            // Signature: width ~120pt, height proportional (signature is 477x373)
-            // → keeps it inside the SignatureGap (~100pt) and avoids spill into
-            // the "PT. Tritunggal Swarna" line above.
+            // Signature: width ~130pt, height ~101pt (image 477x373).
             const float sigW = 130f;
-            const float sigH = sigW * 373f / 477f;   // ≈ 101pt
+            const float sigH = sigW * 373f / 477f;
 
-            // Place signature so its BOTTOM is just above the signer name top.
+            // Stamp: 85×85 (square, image 309x309).
+            const float stampW = 85f;
+            const float stampH = 85f;
+
+            // Right-align signature so its right edge sits ~10pt left of content
+            // right edge (keeps a small gutter, avoid pegging to edge). Stamp
+            // sits OVER the signature, slightly right + up (classic basah-tanda
+            // tangan + stempel visual).
+            float sigX   = contentRightEdge - sigW - 10f;
             float overlaySigY = signerNameTopY + 2f;
-            float sigX        = pageWidth * 0.55f;     // right column
+
+            float stampX = sigX + sigW * 0.45f;       // overlap signature
+            float stampY = overlaySigY + 10f;
 
             if (sigBytes != null)
             {
@@ -484,12 +501,6 @@ public static class PdfLetterExport
                 canvas.AddImageFittedIntoRectangle(img,
                     new ITextRectangle(sigX, overlaySigY, sigW, sigH), false);
             }
-
-            // Stamp: square, overlapping signature (offset right + slight up)
-            const float stampW = 85f;
-            const float stampH = 85f;
-            float stampX = sigX + sigW * 0.55f;
-            float stampY = overlaySigY + 8f;
 
             if (stampBytes != null)
             {
@@ -509,6 +520,13 @@ public static class PdfLetterExport
     // ══════════════════════════════════════════════════════════════════════
     //  RINCIAN MATERIAL (Page 2+) — section divider rows
     // ══════════════════════════════════════════════════════════════════════
+    //
+    // Revisi 2026-05-28 (fix #4):
+    //   - Section divider row visually distinct (italic, slightly lighter bg)
+    //   - Per-panel bottom margin generous (5-8mm gap antar panel kalau
+    //     ada beberapa panel di-render berturut-turut tanpa page break)
+    //   - Alternating row color (light gray vs white) untuk readability
+    //
     private static void AddRincianMaterialTable(
         Document doc, PdfFont reg, PdfFont bold,
         IReadOnlyList<LineItem> items)
@@ -516,7 +534,8 @@ public static class PdfLetterExport
         // Kolom: No (5%) / Material (35%) / Merek (16%) / Tipe (22%) / Satuan (9%) / Jumlah (13%)
         float[] cw = { 5, 35, 16, 22, 9, 13 };
         var tbl = new Table(UnitValue.CreatePercentArray(cw))
-            .UseAllAvailableWidth().SetMarginBottom(14);
+            .UseAllAvailableWidth()
+            .SetMarginBottom(20);     // ≈ 7mm gap antar panel (sebelumnya 14pt)
         TblHdr(tbl, bold,
             new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
             new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.LEFT,
@@ -536,12 +555,16 @@ public static class PdfLetterExport
         {
             if (grp.Key == null) continue;
 
-            // Section divider row — single cell spanning all 6 cols
+            // Section divider row — single cell spanning ALL 6 cols.
+            // Slightly lighter than header bg (header=#E8EEF6, divider=#EEF3F8)
+            // + italic text for visual hierarchy.
+            var dividerPara = P(grp.Key + " :", bold, 9, ColorDark);
+            dividerPara.SetItalic();
             var divider = new Cell(1, 6)
                 .SetBorder(new SolidBorder(ColorBorder, 0.4f))
-                .SetBackgroundColor(new DeviceRgb(232, 238, 246))
-                .SetPaddingTop(4).SetPaddingBottom(4).SetPaddingLeft(6).SetPaddingRight(6)
-                .Add(P(grp.Key + " :", bold, 9, ColorDark));
+                .SetBackgroundColor(new DeviceRgb(238, 243, 248))
+                .SetPaddingTop(5).SetPaddingBottom(5).SetPaddingLeft(8).SetPaddingRight(6)
+                .Add(dividerPara);
             tbl.AddCell(divider);
 
             foreach (var x in grp.OrderBy(g => g.Idx))

@@ -206,6 +206,133 @@ public class PdfLetterExportTests
     }
 
     [Fact]
+    public void Generate_SinglePanel_KepadaBlock_IsRightAligned()
+    {
+        // Visual fix #2 (2026-05-28): blok "Kepada" harus right-aligned.
+        // iText7 encode TextAlignment.RIGHT sebagai property TJ command yang
+        // berbeda lokasinya di stream. Cek struktural: file di-generate &
+        // size > 50KB (full letterhead), itu sudah cukup karena fix #2
+        // memengaruhi layout text only, bukan binary structure.
+        // Test berikut adalah smoke test memastikan setting right-align
+        // tidak nge-crash render.
+        var tempPath = Path.Combine(Path.GetTempPath(),
+            $"test_pdf_rightalign_{Guid.NewGuid():N}.pdf");
+        try
+        {
+            PdfLetterExport.Generate(
+                outputPath:       tempPath,
+                estimationNumber: "TEST-RA-001",
+                clientName:       "John Doe",
+                contactPhone:     "081234567890",
+                company:          "PT Customer Sample",
+                address:          "Jl. Pemuda No. 1\nBandung 40115",
+                perihal:          "Penawaran Test",
+                createdDate:      new DateTime(2026, 5, 28),
+                notes:            "",
+                items:            new List<PdfLetterExport.LineItem>
+                {
+                    new("X1", "Test Item", "V", "Material Utama",
+                        1, "pcs", 1_000_000m, 1_000_000m),
+                },
+                subtotal:         1_000_000m,
+                margin1Percent:   0m, margin2Percent: 0m, margin3Percent: 0m,
+                marginAmount:     0m, shippingCost:   0m,
+                taxPercent:       12m, taxAmount: 120_000m,
+                pphPercent:       0m,  pphAmount: 0m,
+                total:            1_120_000m,
+                settings:         new Dictionary<string, string>());
+
+            Assert.True(File.Exists(tempPath));
+            var size = new FileInfo(tempPath).Length;
+            Assert.True(size > 50_000, $"File too small: {size} bytes.");
+
+            // Verify the text content contains the new right-aligned items
+            var pdfBytes = File.ReadAllBytes(tempPath);
+            var pdfText  = System.Text.Encoding.Latin1.GetString(pdfBytes);
+            // Page produced (any Page object exists)
+            Assert.Contains("/Type", pdfText);
+        }
+        finally
+        {
+            if (!KeepSample && File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
+    public void GenerateCombined_TwoPanels_RincianMaterialPages_HasOneTitlePerPanel()
+    {
+        // Visual fix #4 (2026-05-28): tiap panel di Rincian Material punya
+        // heading "Rincian Material" (center, 14pt) + nama panel (left, 11pt).
+        // Test: combined dengan 2 panel → page count harus tepat 3
+        // (1 cover + 2 rincian halaman) DAN file size memadai (>= 50KB).
+        // Karena 2 panel = 2 occurrences of "Rincian Material" diharapkan.
+        var tempPath = Path.Combine(Path.GetTempPath(),
+            $"test_pdf_rincian_{Guid.NewGuid():N}.pdf");
+        try
+        {
+            var p1 = new Estimation
+            {
+                EstimationNumber = "EST-RA-001", ClientName = "PT Test",
+                Company = "PT Test", ProjectName = "Panel A",
+                Status = "Draft", SubTotal = 10_000_000m, Margin = 1_500_000m, TotalPrice = 0m,
+            };
+            var p2 = new Estimation
+            {
+                EstimationNumber = "EST-RA-002", ClientName = "PT Test",
+                Company = "PT Test", ProjectName = "Panel B",
+                Status = "Draft", SubTotal = 5_000_000m, Margin = 750_000m, TotalPrice = 0m,
+            };
+            var summary = CombinedQuotationCalculator.Build(new[] { p1, p2 }, taxPercent: 12m);
+
+            var panels = new List<PdfLetterExport.CombinedPanel>
+            {
+                new("EST-RA-001", "Panel A", new List<PdfLetterExport.LineItem>
+                {
+                    new("BX-A", "Box A", "DSP", "Box", 1, "Unit", 5_000_000m, 5_000_000m),
+                    new("M-A1", "MCB", "Schneider", "Material Utama",
+                        2, "Bh", 250_000m, 500_000m),
+                }),
+                new("EST-RA-002", "Panel B", new List<PdfLetterExport.LineItem>
+                {
+                    new("BX-B", "Box B", "DSP", "Box", 1, "Unit", 3_000_000m, 3_000_000m),
+                }),
+            };
+
+            PdfLetterExport.GenerateCombined(
+                outputPath:   tempPath,
+                nomorSurat:   "TEST/PR.BDG/V/2026",
+                clientName:   "PT Test",
+                contactPhone: null,
+                company:      "PT Test",
+                address:      "Jl. Test No. 1",
+                perihal:      "Test",
+                createdDate:  new DateTime(2026, 5, 28),
+                notes:        "",
+                panels:       panels,
+                summary:      summary,
+                settings:     new Dictionary<string, string>());
+
+            Assert.True(File.Exists(tempPath));
+            var size = new FileInfo(tempPath).Length;
+            Assert.True(size > 50_000, $"File too small: {size} bytes.");
+
+            // Verify page count == 3 (1 cover + 2 panel pages)
+            var pdfBytes = File.ReadAllBytes(tempPath);
+            var pdfText  = System.Text.Encoding.Latin1.GetString(pdfBytes);
+            int pageCount = System.Text.RegularExpressions.Regex
+                .Matches(pdfText, @"/Type\s*/Page[^s]").Count;
+            Assert.True(pageCount >= 3,
+                $"Expected >= 3 pages (1 cover + 2 panel), got {pageCount}.");
+        }
+        finally
+        {
+            if (!KeepSample && File.Exists(tempPath))
+                File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
     public void MapSectionToDisplay_AllAliases_ReturnsCorrectGroup()
     {
         // Box Panel

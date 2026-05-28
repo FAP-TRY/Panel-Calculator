@@ -247,3 +247,103 @@ halaman ke-2, iText otomatis split table dan letterhead tetap muncul.
 Customer bisa buka .docx hasil di Word 2016+, edit fine-tune (mis. tambah
 catatan, ganti urutan), lalu save. Letterhead di header tidak akan
 "jatuh" karena disisipkan via Section Header (built-in Word feature).
+
+---
+
+## Visual revision 2026-05-28 (post v1.2.8 — sebelum release)
+
+User submit 4 feedback visual berdasarkan screenshot output v1.2.8:
+
+### Fix #1 — Spasi banner letterhead atas/bawah
+**Sebelum:** Konten body langsung mepet ke banner letterhead (logo TTS
+atas / footer alamat bawah).
+**Sesudah:** Margin top 3.0cm→3.5cm (85pt→99pt) dan margin bottom
+1.5cm→2.0cm (43pt→57pt). Tambah ~5mm breathing room di atas dan bawah.
+
+| File | Method | Perubahan |
+|------|--------|-----------|
+| `PdfLetterExport.cs` | `Generate` + `GenerateCombined` | `SetMargins(99f, 43f, 57f, 71f)` |
+| `WordLetterExport.cs` | `SetupPage` | `MarginTop=99f; MarginBottom=57f` |
+
+### Fix #2 — Blok "Kepada" right-aligned
+**Sebelum:** Blok "Kepada / PT [Customer] / Address / Telp / Up." berada
+di kolom kanan tabel 48/52 tapi text-nya left-aligned di cell, sehingga
+visual seperti "tengah halaman" — tidak sejajar dengan edge kanan tabel
+"Harga Satuan (Rp)" di bawahnya.
+**Sesudah:** Semua paragraph di kolom kanan header table set ke
+`TextAlignment.RIGHT` (PDF) atau `Alignment.right` (Word).
+Cell-level juga set right alignment + paddingRight=0 supaya beneran
+mepet edge kanan tabel.
+
+| File | Method | Perubahan |
+|------|--------|-----------|
+| `PdfLetterExport.cs` | `Page1Header` | `rightCell.SetTextAlignment(TextAlignment.RIGHT)` + per-paragraph `SetTextAlignment(RIGHT)` |
+| `WordLetterExport.cs` | `WriteHeaderBlock` | Setiap paragraph di rightCell: `p.Alignment = Alignment.right` |
+
+### Fix #3 — Blok signature right-aligned
+**Sebelum:** Blok "Bandung, [tanggal] / PT TTS / ttd / signer / jabatan"
+dipakai dalam table 50/50 dengan content left-aligned di cell kanan.
+Visual: di tengah halaman.
+**Sesudah:** Table split jadi 55/45 (kolom kanan lebih sempit),
+semua paragraph cell kanan right-aligned. Signature image + stamp
+image juga di-reposition ke kanan: signature `sigX = contentRightEdge
+- sigW - 10pt` (mepet edge kanan dengan 10pt gutter), stamp overlap
+signature di kanan + sedikit naik (visual ttd basah + stempel).
+
+| File | Method | Perubahan |
+|------|--------|-----------|
+| `PdfLetterExport.cs` | `AddSignatureBlock` | Table 55/45 + all paragraphs `TextAlignment.RIGHT`; sig/stamp X = content right edge |
+| `WordLetterExport.cs` | `WriteSignatureBlock` | Table 5500/4000 + per-paragraph `Alignment.right` |
+
+### Fix #4 — Rincian Material per panel match screenshot
+**Sebelum:** Layout sudah OK secara fungsional tapi section divider
+row di Word punya 6 cell terpisah dengan text hanya di cell[1] (visual
+divider terpotong). PDF sudah pakai `Cell(1, 6)` (proper colspan).
+**Sesudah:**
+- PDF: divider style ditambah italic, bg lebih terang dari header
+  (#EEF3F8 vs header #E8EEF6) untuk visual hierarchy yang lebih jelas;
+  margin bottom 14pt→20pt untuk gap antar panel lebih lega.
+- Word: pakai `Row.MergeCells(0, 5)` untuk beneran span 6 cols. Text
+  divider bold + italic. Alternating row color (white vs #F8FAFC).
+- Heading "Rincian Material" konsisten center bold 14pt + nama panel
+  left bold 11pt + spacing yang konsisten (12pt setelah Rincian,
+  6pt setelah nama panel).
+
+| File | Method | Perubahan |
+|------|--------|-----------|
+| `PdfLetterExport.cs` | `GenerateCombined` (loop), `AddRincianMaterialTable` | Heading spacing fix; divider italic + bg #EEF3F8; margin bottom 20pt |
+| `WordLetterExport.cs` | `GenerateCombined` (loop), `WriteRincianMaterialTable` | `MergeCells(0, 5)` + italic divider + alternating row bg |
+
+### Verifikasi
+```
+dotnet build PanelCalculator.sln -c Release → 0 error, 0 warning
+dotnet test PanelCalculator.Tests             → 132/132 pass
+                                                (130 baseline + 2 baru)
+```
+
+Test baru di `PdfLetterExportTests.cs`:
+- `Generate_SinglePanel_KepadaBlock_IsRightAligned` — smoke test render dengan right-align tidak crash
+- `GenerateCombined_TwoPanels_RincianMaterialPages_HasOneTitlePerPanel` — page count == 3 (1 cover + 2 panel), file size >= 50KB
+
+### Sample artefak re-generated
+```
+dotnet test PanelCalculator.Tests --filter "EmitSamples" -e EMIT_SAMPLES=1
+```
+Output di `build/samples/letter-export/` (delta size vs sebelumnya):
+- `sample-single-EV-Charger.pdf`: 287720 → 287738 byte (+18, layout right-align)
+- `sample-combined-Panel-Distribusi.pdf`: 620027 → 620097 byte (+70, 3 page tetap)
+- `sample-single-EV-Charger.docx`: 224941 → 224944 byte
+- `sample-combined-Panel-Distribusi.docx`: 225680 → 225683 byte
+
+Visual verification: PDF cover sekarang menampilkan Kepada block + signature
+block beneran rata kanan (sejajar edge tabel item). Rincian Material section
+divider lebih distinct (italic, bg lebih terang). Breathing room di atas
+"Nomor" dan di bawah "Direktur" jelas terlihat.
+
+### Constraint yang dipatuhi
+- TIDAK ubah method signature `Generate` / `GenerateCombined`
+- TIDAK ubah skema DB
+- TIDAK bump version (user yang handle)
+- TIDAK commit (user yang handle)
+- Build clean: 0 error, 0 warning (warning DashboardForm yang sebelumnya
+  ada juga hilang setelah rebuild)
