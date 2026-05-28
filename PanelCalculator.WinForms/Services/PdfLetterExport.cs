@@ -12,25 +12,35 @@ using iText.Layout.Element;
 using iText.Layout.Properties;
 using PanelCalculator.Core.Services;
 using System.Globalization;
+using System.Reflection;
+using ITextRectangle = iText.Kernel.Geom.Rectangle;
 
 namespace PanelCalculator.WinForms.Services;
 
 /// <summary>
-/// Generates a formal Surat Penawaran Harga.
-/// If "letterhead.png" (or .jpg) exists next to the EXE it is drawn as a full-page
-/// background on every page (START_PAGE event), so the PDF looks like it was printed on
-/// the company's official letterhead paper.
+/// Generate Surat Penawaran Harga formal PT TTS dengan layout PIXEL-MATCH
+/// dengan template DOCX resmi yang sudah dipakai selama ini (mis. 161 PT Gemilang,
+/// 191 PT Anugerah Jaya).
+/// <para>
+/// Background tiap halaman diisi dengan <c>letterhead.jpg</c> embedded resource
+/// (logo TTS + sertifikasi + footer alamat). Tanda tangan + stempel di-overlay
+/// di akhir surat dari embedded resource <c>signature.png</c> dan <c>stamp.png</c>.
+/// </para>
+/// <para>
+/// Section mapping ringkasan Page-1 dan divider Rincian Material Page-2:
+/// "Box"/"Box Panel" → "Box Panel :",
+/// "Material Utama"/"Incoming" → "Incoming :",
+/// "Material Pendukung"/"Outgoing" → "Outgoing :",
+/// "Material Lainnya"/"Trailer"/"Karoseri"/"Jasa" → "Lainnya :"
+/// </para>
 /// </summary>
 public static class PdfLetterExport
 {
-    // ── Palette (content only – light / professional) ─────────────────────
-    private static readonly DeviceRgb ColorDark     = new(25,  25,  25);
-    private static readonly DeviceRgb ColorMuted    = new(100, 100, 100);
-    private static readonly DeviceRgb ColorTableHdr = new(210, 225, 245);
-    private static readonly DeviceRgb ColorTableAlt = new(245, 249, 255);
-    private static readonly DeviceRgb ColorWhite    = new(255, 255, 255);
-    private static readonly DeviceRgb ColorBorder   = new(170, 185, 210);
-    private static readonly DeviceRgb ColorTotal    = new(235, 242, 255);
+    // ── Palette ───────────────────────────────────────────────────────────
+    private static readonly DeviceRgb ColorDark   = new(25,  25,  25);
+    private static readonly DeviceRgb ColorMuted  = new(110, 110, 110);
+    private static readonly DeviceRgb ColorBorder = new(160, 170, 185);
+    private static readonly DeviceRgb ColorRowAlt = new(248, 250, 252);
 
     private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
 
@@ -45,7 +55,14 @@ public static class PdfLetterExport
         decimal UnitPrice,
         decimal LineTotal);
 
-    // ── Public API ────────────────────────────────────────────────────────
+    public record CombinedPanel(
+        string  EstimationNumber,
+        string? ProjectName,
+        IReadOnlyList<LineItem> Items);
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  PUBLIC API — SINGLE PANEL
+    // ══════════════════════════════════════════════════════════════════════
     public static void Generate(
         string  outputPath,
         string  estimationNumber,
@@ -70,60 +87,74 @@ public static class PdfLetterExport
         decimal total,
         IDictionary<string, string> settings)
     {
+        ArgumentNullException.ThrowIfNull(outputPath);
+        ArgumentNullException.ThrowIfNull(items);
+        ArgumentNullException.ThrowIfNull(settings);
+
         using var writer = new PdfWriter(outputPath);
         using var pdf    = new PdfDocument(writer);
 
         var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
         var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
 
-        // ── Settings ─────────────────────────────────────────────────────
-        var signerName    = Get(settings, "SignerName",    "");
-        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
+        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
         var offerLocation = Get(settings, "OfferLocation", "Bandung");
 
-        // ── Letterhead background image ───────────────────────────────────
-        // Look for letterhead.png / letterhead.jpg next to the EXE (or path in settings)
-        var bgPath = FindLetterheadImage(settings);
-        if (bgPath != null)
-            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
-                new BackgroundImageHandler(bgPath));
+        // ── Letterhead background ─────────────────────────────────────────
+        AttachLetterhead(pdf, settings);
 
-        // Margins sized to match the letterhead body area:
-        //   top  ~90 pt  = below the company logo + separator line
-        //   bot  ~72 pt  = above address lines + footer bar
+        // Margins match referensi DOCX:
+        //   top  = 3.0 cm (85 pt)  — di bawah logo header
+        //   bot  = 1.5 cm (43 pt)  — di atas footer alamat
+        //   left = 2.5 cm (71 pt)
+        //   right= 1.5 cm (43 pt)
         using var doc = new Document(pdf, PageSize.A4);
-        doc.SetMargins(90f, 60f, 72f, 60f);
+        doc.SetMargins(85f, 43f, 43f, 71f);
 
-        // ── Page 1 ────────────────────────────────────────────────────────
-        Page1(doc, reg, bold,
-            estimationNumber, clientName, contactPhone, company, address, perihal,
-            createdDate, notes, items,
-            subtotal, marginAmount, shippingCost, taxPercent, taxAmount, pphAmount, total,
-            signerName, signerTitle, offerLocation);
+        // Total panel = subtotal + margin (TANPA PPN — itu ditambahkan di bawah).
+        // Untuk single panel, baris tabel ringkas = 1 baris dengan harga "satuan panel".
+        var panelLabel = !string.IsNullOrWhiteSpace(perihal) ? perihal!.Trim() : "Penawaran Harga";
+        decimal panelUnitPrice = subtotal + marginAmount;
 
-        // ── Page 2 ────────────────────────────────────────────────────────
-        doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-        Page2(doc, reg, bold, items, estimationNumber);
+        Page1Header(doc, reg, bold, estimationNumber,
+            clientName, contactPhone, company, address,
+            perihalText: "Informasi Harga",
+            lampiranText: "-");
+
+        // Salam + opening sesuai referensi single-item:
+        // "Bersama dengan ini kami sampaikan informasi harga material sebagai berikut :"
+        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(6));
+        doc.Add(P("Bersama dengan ini kami sampaikan informasi harga material sebagai berikut :",
+            reg, 10, ColorDark).SetMarginBottom(10));
+
+        // Tabel 3-kolom (single row)
+        var rows = new List<(string Label, decimal Price)>
+        {
+            (panelLabel, panelUnitPrice),
+        };
+        Add3ColTable(doc, reg, bold, rows);
+
+        // Penutup
+        AddKondisiPenawaran(doc, reg, bold, taxPercent, offerLocation, isSingle: true);
+
+        if (!string.IsNullOrWhiteSpace(notes))
+        {
+            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
+            doc.Add(P($"Catatan: {notes}", reg, 9, ColorMuted).SetMarginBottom(4));
+        }
+
+        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(8));
+        doc.Add(P(
+            "Demikian informasi harga ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.",
+            reg, 10, ColorDark).SetMarginBottom(20));
+
+        AddSignatureBlock(doc, pdf, reg, bold, createdDate, offerLocation, signerName, signerTitle);
     }
 
     // ══════════════════════════════════════════════════════════════════════
-    //  COMBINED (MULTI-PANEL) EXPORT
+    //  PUBLIC API — COMBINED (MULTI-PANEL)
     // ══════════════════════════════════════════════════════════════════════
-    /// <summary>
-    /// Satu panel = satu Estimation. Items per panel dikelompokkan agar
-    /// surat penawaran multi-panel bisa di-render dengan ringkasan akhir
-    /// terpisah (PPN dihitung sekali dari total semua panel).
-    /// </summary>
-    public record CombinedPanel(
-        string  EstimationNumber,
-        string? ProjectName,
-        IReadOnlyList<LineItem> Items);
-
-    /// <summary>
-    /// Render surat penawaran gabungan beberapa panel ke satu PDF.
-    /// PPN dan ongkir dihitung di akhir (lihat <see cref="PanelCalculator.Core.Services.CombinedQuotationCalculator"/>).
-    /// Customer info diambil dari panel pertama.
-    /// </summary>
     public static void GenerateCombined(
         string outputPath,
         string nomorSurat,
@@ -135,9 +166,13 @@ public static class PdfLetterExport
         DateTime createdDate,
         string notes,
         IReadOnlyList<CombinedPanel> panels,
-        PanelCalculator.Core.Services.CombinedQuotationCalculator.CombinedSummary summary,
+        CombinedQuotationCalculator.CombinedSummary summary,
         IDictionary<string, string> settings)
     {
+        ArgumentNullException.ThrowIfNull(outputPath);
+        ArgumentNullException.ThrowIfNull(panels);
+        ArgumentNullException.ThrowIfNull(summary);
+        ArgumentNullException.ThrowIfNull(settings);
         if (panels.Count == 0)
             throw new ArgumentException("Minimal satu panel diperlukan.", nameof(panels));
 
@@ -147,279 +182,445 @@ public static class PdfLetterExport
         var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
         var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
 
-        var signerName    = Get(settings, "SignerName",    "");
-        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
+        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
         var offerLocation = Get(settings, "OfferLocation", "Bandung");
 
-        var bgPath = FindLetterheadImage(settings);
-        if (bgPath != null)
-            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
-                new BackgroundImageHandler(bgPath));
+        AttachLetterhead(pdf, settings);
 
         using var doc = new Document(pdf, PageSize.A4);
-        doc.SetMargins(90f, 60f, 72f, 60f);
+        doc.SetMargins(85f, 43f, 43f, 71f);
 
-        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
-        var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
+        // Lampiran field menyebut "Rincian Material" karena halaman 2+ berisi rincian
+        Page1Header(doc, reg, bold, nomorSurat,
+            clientName, contactPhone, company, address,
+            perihalText: !string.IsNullOrWhiteSpace(perihal) ? perihal! : "Penawaran Harga",
+            lampiranText: "Rincian Material");
 
-        // ── Header (Nomor/Perihal/Lampiran + Kepada) ─────────────────────
-        var hdrTbl = new Table(UnitValue.CreatePercentArray(new float[] { 48, 52 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(10);
-        var leftRefTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 4, 68 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
-        AddRef(leftRefTbl, "Nomor",    nomorSurat,                                            reg, bold);
-        AddRef(leftRefTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal! : "Penawaran Harga Multi-Panel", reg, bold);
-        AddRef(leftRefTbl, "Lampiran", $"{panels.Count} Rincian Panel", reg, bold);
-        hdrTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl));
-
-        bool hasCompany = !string.IsNullOrWhiteSpace(company);
-        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
-        rightCell.Add(P("Kepada:", bold, 10, ColorDark).SetMarginBottom(1));
-        if (hasCompany)
-            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
-        else if (!string.IsNullOrWhiteSpace(clientName))
-            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
-        if (!string.IsNullOrWhiteSpace(address))
-            foreach (var line in address.Split(new[]{'\n','\r'}, StringSplitOptions.RemoveEmptyEntries))
-                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
-        if (!string.IsNullOrWhiteSpace(contactPhone))
-            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
-        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
-            rightCell.Add(P($"\nUp. {clientName}", bold, 10, ColorDark).SetMarginBottom(0));
-        hdrTbl.AddCell(rightCell);
-        doc.Add(hdrTbl);
-        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
-
-        // ── Salam pembuka ───────────────────────────────────────────────
-        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));
+        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(6));
         doc.Add(P(
-            $"Bersama ini kami sampaikan penawaran harga untuk {panels.Count} (panel) sebagai berikut:",
+            "Bersama dengan ini kami sampaikan surat penawaran harga sebagai berikut :",
             reg, 10, ColorDark).SetMarginBottom(10));
 
-        // ── Per-panel section ───────────────────────────────────────────
-        for (int pi = 0; pi < panels.Count; pi++)
+        // Tabel 3-kolom, satu baris per panel (label = ProjectName or estimation number, harga = PanelSubtotal)
+        var rows = panels.Select((p, i) =>
         {
-            var panel = panels[pi];
-            var panelTitle = !string.IsNullOrWhiteSpace(panel.ProjectName)
-                ? $"Panel #{pi + 1} — {panel.ProjectName}"
-                : $"Panel #{pi + 1} — {panel.EstimationNumber}";
+            var label = !string.IsNullOrWhiteSpace(p.ProjectName)
+                ? p.ProjectName!.Trim()
+                : p.EstimationNumber;
+            var price = summary.Panels[i].PanelSubtotal;
+            return (Label: label, Price: price);
+        }).ToList();
+        Add3ColTable(doc, reg, bold, rows);
 
-            doc.Add(P(panelTitle, bold, 11, ColorDark).SetMarginTop(6).SetMarginBottom(4));
-
-            // Ringkasan per section (Material Utama, Pendukung, dst.)
-            var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
-                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
-            var sectionTotals = allSections
-                .Select(s => (Name: s, Total: panel.Items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
-                .Where(x => x.Total > 0)
-                .ToList();
-
-            float[] pw = { 8, 62, 30 };
-            var ptbl = new Table(UnitValue.CreatePercentArray(pw)).UseAllAvailableWidth().SetMarginBottom(4);
-            TblHdr(ptbl, bold,
-                new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
-                new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
-            int no = 0;
-            foreach (var (name, st) in sectionTotals)
-            {
-                no++;
-                var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
-                ptbl.AddCell(DC($"{no}.", reg, 9, bg, TextAlignment.CENTER));
-                ptbl.AddCell(DC(name,     reg, 9, bg, TextAlignment.LEFT));
-                ptbl.AddCell(DC(Rp(st),   reg, 9, bg, TextAlignment.RIGHT));
-            }
-            doc.Add(ptbl);
-
-            // Sub-total per panel (bold, right aligned)
-            var panelSubtotal = summary.Panels[pi].PanelSubtotal;
-            var subtotalTbl = new Table(UnitValue.CreatePercentArray(new float[] { 70, 30 }))
-                .UseAllAvailableWidth().SetMarginBottom(8);
-            subtotalTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER)
-                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingRight(6)
-                .Add(P($"Sub-total Panel #{pi + 1}", bold, 10, ColorDark)));
-            subtotalTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER)
-                .SetBackgroundColor(ColorTotal)
-                .SetTextAlignment(TextAlignment.RIGHT).SetPaddingRight(8).SetPaddingLeft(8)
-                .SetPaddingTop(4).SetPaddingBottom(4)
-                .Add(P(Rp(panelSubtotal), bold, 10, ColorDark)));
-            doc.Add(subtotalTbl);
-        }
-
-        // ── Garis pemisah dan ringkasan akhir ───────────────────────────
-        doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1.2f))
-            .SetStrokeColor(ColorDark).SetMarginTop(6).SetMarginBottom(8));
-
-        doc.Add(P("RINGKASAN PENAWARAN", bold, 11, ColorDark)
-            .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(6));
-
-        var sumTbl = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 }))
-            .UseAllAvailableWidth().SetMarginBottom(6);
-
-        void AddSumRow(string label, decimal value, bool isBold, bool isTotal = false, bool negative = false)
-        {
-            var fontL = isBold ? bold : reg;
-            var bg = isTotal ? ColorTotal : ColorWhite;
-            float size = isTotal ? 11 : 9;
-            string display = negative ? "- " + Rp(System.Math.Abs(value)) : Rp(value);
-            sumTbl.AddCell(new Cell()
-                .SetBackgroundColor(bg)
-                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
-                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
-                .SetPaddingLeft(8).SetPaddingRight(6)
-                .SetTextAlignment(TextAlignment.LEFT)
-                .Add(P(label, fontL, size, ColorDark)));
-            sumTbl.AddCell(new Cell()
-                .SetBackgroundColor(bg)
-                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
-                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
-                .SetPaddingLeft(8).SetPaddingRight(8)
-                .SetTextAlignment(TextAlignment.RIGHT)
-                .Add(P(display, fontL, size, ColorDark)));
-        }
-
-        // Sub-total per panel
-        foreach (var pl in summary.Panels)
-        {
-            var label = !string.IsNullOrWhiteSpace(pl.ProjectName)
-                ? $"Sub-total Panel #{pl.Index} — {pl.ProjectName}"
-                : $"Sub-total Panel #{pl.Index} ({pl.EstimationNumber})";
-            AddSumRow(label, pl.PanelSubtotal, isBold: false);
-        }
-        // Total subtotal
-        AddSumRow("Total Sub-total Semua Panel", summary.GrandSubtotal, isBold: true);
-        if (summary.CombinedShippingCost > 0)
-            AddSumRow("Ongkos Kirim Gabungan", summary.CombinedShippingCost, isBold: false);
-        AddSumRow("DPP (Dasar Pengenaan Pajak)", summary.DPP, isBold: true);
-        if (summary.TaxAmount > 0)
-            AddSumRow($"PPN {summary.TaxPercent:F0}% (dihitung sekali)", summary.TaxAmount, isBold: false);
-        if (summary.TotalPPh > 0)
-            AddSumRow("PPh (ditahan, total dari semua panel)", summary.TotalPPh, isBold: false, negative: true);
-        AddSumRow("GRAND TOTAL", summary.GrandTotal, isBold: true, isTotal: true);
-
-        doc.Add(sumTbl);
-
-        // ── Terbilang ───────────────────────────────────────────────────
-        doc.Add(P("Terbilang: " + summary.Terbilang,
-            bold, 10, ColorDark)
-            .SetMarginTop(2).SetMarginBottom(8).SetItalic());
-
-        // ── Kondisi Penawaran ───────────────────────────────────────────
-        doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
-        var conds = new[]
-        {
-            summary.TaxPercent > 0
-                ? "Harga belum termasuk PPN (menyesuaikan peraturan pemerintah), dihitung sekali atas total seluruh panel"
-                : "Harga sudah termasuk PPN",
-            $"Harga loco {city}",
-            "DP 30% saat PO kami terima dan pelunasan 70% pada saat barang akan dikirimkan",
-            "Harga tidak terikat dan dapat berubah sewaktu-waktu",
-        };
-        for (int ci = 0; ci < conds.Length; ci++)
-            doc.Add(P($"{ci + 1}. {conds[ci]}", reg, 10, ColorDark).SetMarginBottom(2));
+        AddKondisiPenawaran(doc, reg, bold, summary.TaxPercent, offerLocation, isSingle: false);
 
         if (!string.IsNullOrWhiteSpace(notes))
         {
             doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
-            doc.Add(P($"Catatan: {notes}", reg, 9, ColorMuted).SetMarginBottom(2));
+            doc.Add(P($"Catatan: {notes}", reg, 9, ColorMuted).SetMarginBottom(4));
         }
-        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(14));
 
+        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(8));
         doc.Add(P(
-            "Demikian surat penawaran ini kami sampaikan. " +
-            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.",
+            "Demikian surat penawaran ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.",
             reg, 10, ColorDark).SetMarginBottom(20));
 
-        // ── Signature ────────────────────────────────────────────────────
-        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 45, 55 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
-        var sigCell = new Cell().SetBorder(Border.NO_BORDER)
-            .Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(1))
-            .Add(P("PT. Tritunggal Swarna", reg, 10, ColorDark).SetMarginBottom(46));
-        if (!string.IsNullOrWhiteSpace(signerName))
-            sigCell.Add(P(signerName,  bold, 10, ColorDark).SetMarginBottom(0));
-        if (!string.IsNullOrWhiteSpace(signerTitle))
-            sigCell.Add(P(signerTitle, reg,   9, ColorMuted));
-        sigTbl.AddCell(sigCell);
-        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
-        doc.Add(sigTbl);
+        AddSignatureBlock(doc, pdf, reg, bold, createdDate, offerLocation, signerName, signerTitle);
 
-        // ── Halaman Rincian Material per panel ──────────────────────────
+        // ── Halaman Rincian Material per panel ───────────────────────────
         for (int pi = 0; pi < panels.Count; pi++)
         {
             doc.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+
             var panel = panels[pi];
             var heading = !string.IsNullOrWhiteSpace(panel.ProjectName)
-                ? $"RINCIAN PANEL #{pi + 1} — {panel.ProjectName!.ToUpper()}"
-                : $"RINCIAN PANEL #{pi + 1}";
-            doc.Add(P(heading, bold, 14, ColorDark)
-                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(2));
-            doc.Add(P($"Ref: {panel.EstimationNumber}", reg, 9, ColorMuted)
-                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(10));
-            doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
-                .SetStrokeColor(ColorDark).SetMarginBottom(14));
+                ? panel.ProjectName!.Trim()
+                : panel.EstimationNumber;
 
-            var sections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
-                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
-            int sectionNo = 0;
-            foreach (var sec in sections)
+            // "Rincian Material" judul (center, bold, 14pt)
+            doc.Add(P("Rincian Material", bold, 14, ColorDark)
+                .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(6));
+
+            // Sub-heading: nama panel
+            doc.Add(P(heading, bold, 11, ColorDark).SetMarginBottom(4));
+
+            AddRincianMaterialTable(doc, reg, bold, panel.Items);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  PAGE-1 HEADER  (Nomor/Perihal/Lampiran ↔ Kepada/Address/Up.)
+    // ══════════════════════════════════════════════════════════════════════
+    private static void Page1Header(
+        Document doc, PdfFont reg, PdfFont bold,
+        string estNo,
+        string clientName, string? contactPhone, string? company, string? address,
+        string perihalText, string lampiranText)
+    {
+        var hdrTbl = new Table(UnitValue.CreatePercentArray(new float[] { 48, 52 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(10);
+
+        // ── LEFT: Nomor/Perihal/Lampiran ──
+        var leftRefTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 4, 68 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
+        AddRef(leftRefTbl, "Nomor",    estNo,        reg, bold);
+        AddRef(leftRefTbl, "Perihal",  perihalText,  reg, bold);
+        AddRef(leftRefTbl, "Lampiran", lampiranText, reg, bold);
+        hdrTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl));
+
+        // ── RIGHT: Kepada / Address / Up. ──
+        bool hasCompany = !string.IsNullOrWhiteSpace(company);
+        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
+        rightCell.Add(P("Kepada:", reg, 10, ColorDark).SetMarginBottom(2));
+
+        if (hasCompany)
+            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
+        else if (!string.IsNullOrWhiteSpace(clientName))
+            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
+
+        if (!string.IsNullOrWhiteSpace(address))
+            foreach (var line in address.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
+
+        if (!string.IsNullOrWhiteSpace(contactPhone))
+            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
+
+        // "Up. <contact person>" — di bawah alamat, baris kosong di atas.
+        // Hanya dimunculkan kalau clientName MEMANG berbeda dari company name
+        // (artinya ada contact person yang spesifik). Kalau clientName == company
+        // atau clientName kosong, "Up." tidak ditambahkan supaya tidak redundant.
+        if (hasCompany && !string.IsNullOrWhiteSpace(clientName) &&
+            !string.Equals(clientName.Trim(), company!.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            rightCell.Add(P("", reg, 4, ColorDark).SetMarginTop(4).SetMarginBottom(0));
+            rightCell.Add(P($"Up. {clientName.Trim()}", reg, 10, ColorDark).SetMarginBottom(0));
+        }
+
+        hdrTbl.AddCell(rightCell);
+        doc.Add(hdrTbl);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  3-COL TABLE  (No. / Nama Barang / Harga Satuan)
+    // ══════════════════════════════════════════════════════════════════════
+    private static void Add3ColTable(
+        Document doc, PdfFont reg, PdfFont bold,
+        IReadOnlyList<(string Label, decimal Price)> rows)
+    {
+        float[] cw = { 8, 62, 30 };
+        var tbl = new Table(UnitValue.CreatePercentArray(cw))
+            .UseAllAvailableWidth().SetMarginBottom(12);
+
+        // Header
+        TblHdr(tbl, bold,
+            new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
+            new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
+
+        // Data rows
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var bg = (i % 2 == 0) ? ColorRowAlt : (DeviceRgb?)null;
+            tbl.AddCell(DataCell($"{i + 1}.",            reg, 9, bg, TextAlignment.CENTER));
+            tbl.AddCell(DataCell(rows[i].Label,          reg, 9, bg, TextAlignment.LEFT));
+            tbl.AddCell(DataCell(RpDash(rows[i].Price),  reg, 9, bg, TextAlignment.RIGHT));
+        }
+        doc.Add(tbl);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  KONDISI PENAWARAN  (bullet list)
+    // ══════════════════════════════════════════════════════════════════════
+    private static void AddKondisiPenawaran(
+        Document doc, PdfFont reg, PdfFont bold,
+        decimal taxPercent, string offerLocation, bool isSingle)
+    {
+        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
+
+        var conds = new List<string>();
+        if (taxPercent > 0)
+            conds.Add($"Harga belum termasuk PPN {taxPercent:0.##}% (menyesuaikan dengan peraturan pemerintah)");
+        else
+            conds.Add("Harga belum termasuk PPN (menyesuaikan dengan peraturan pemerintah)");
+        conds.Add($"Harga loco {(string.Equals(city, "Bandung", StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
+        if (!isSingle)
+            conds.Add("DP 30% saat PO kami terima dan pelunasan 70% sebelum barang dikirim");
+        conds.Add("Harga tidak terikat dan dapat berubah sewaktu-waktu");
+
+        foreach (var c in conds)
+        {
+            var bullet = new Paragraph()
+                .SetFont(reg).SetFontSize(10).SetFontColor(ColorDark)
+                .SetMarginBottom(2).SetMarginLeft(12)
+                .Add(new Text("•  "))
+                .Add(new Text(c));
+            doc.Add(bullet);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  SIGNATURE BLOCK  (city+date / PT TTS / sig+stamp overlay / nama / jabatan)
+    // ══════════════════════════════════════════════════════════════════════
+    //
+    // Strategy: we capture the layout Y position BEFORE adding the text
+    // signature block, then add the text block, then draw the images at
+    // the right vertical offset relative to that captured Y (so images
+    // overlap the gap between "PT. Tritunggal Swarna" and "Kuntjoro Handoko").
+    //
+    private static void AddSignatureBlock(
+        Document doc, PdfDocument pdf, PdfFont reg, PdfFont bold,
+        DateTime createdDate, string offerLocation, string signerName, string signerTitle)
+    {
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
+
+        // Capture Y BEFORE the block is added. We need to know roughly where
+        // the bottom of "PT. Tritunggal Swarna" line will sit so we can draw
+        // the signature+stamp in the spacer above the signer name.
+        float? yBefore = null;
+        int    pageBefore = pdf.GetNumberOfPages();
+        try
+        {
+            var r = doc.GetRenderer();
+            // r.GetCurrentArea() returns the current LayoutArea; null until
+            // first render. Force a renderer flush so we get a valid Y:
+            // simplest is to query CurrentArea AFTER an empty add. The
+            // calling code already flushed the closing paragraph, so we
+            // can read directly.
+            var area = r?.GetCurrentArea();
+            if (area != null)
+                yBefore = area.GetBBox().GetTop();
+        }
+        catch { /* renderer state unavailable — fall back below */ }
+
+        // Right-aligned signature block; left half empty
+        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 50, 50 }))
+            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER)
+            .SetMarginTop(0);
+        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
+
+        var sigCell = new Cell().SetBorder(Border.NO_BORDER);
+        sigCell.Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(2));
+        sigCell.Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark).SetMarginBottom(0));
+
+        // Reserve vertical space for the signature+stamp overlay
+        // (must be >= signature image height + small margin = ~100pt to fit cleanly)
+        const float SignatureGap = 100f;
+        sigCell.Add(P("", reg, 1, ColorDark).SetMarginTop(SignatureGap).SetMarginBottom(0));
+
+        if (!string.IsNullOrWhiteSpace(signerName))
+            sigCell.Add(P(signerName, bold, 10, ColorDark).SetMarginBottom(0).SetUnderline());
+        if (!string.IsNullOrWhiteSpace(signerTitle))
+            sigCell.Add(P(signerTitle, reg, 10, ColorDark));
+
+        sigTbl.AddCell(sigCell);
+        doc.Add(sigTbl);
+
+        // ── Draw signature + stamp overlay in the gap we reserved.
+        try
+        {
+            var sigBytes   = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.signature.png");
+            var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
+            if (sigBytes == null && stampBytes == null) return;
+
+            // The signature should appear on the page that the last paragraph
+            // of the sig block landed on. Most often that's the same page as
+            // before doc.Add (the closing paragraph is small). If the renderer
+            // pushed to a new page (rare; happens when the page is nearly
+            // full), the closing block sits at the top of the new page and
+            // we should draw the overlay there.
+            int pageAfter = pdf.GetNumberOfPages();
+            var page      = pdf.GetPage(pageAfter);
+            var pageSize  = page.GetPageSize();
+            var canvas    = new PdfCanvas(page);
+            float pageWidth = pageSize.GetWidth();
+
+            // Position the overlay at the gap reserved above the signer name.
+            // The signer name was drawn directly after the SignatureGap spacer,
+            // so it sits roughly `bottomMargin + 2 lines` above page bottom.
+            //
+            //   page bottom margin    ≈ 43 pt
+            //   jabatan line height   ≈ 14 pt
+            //   signerName underline  ≈ 14 pt
+            //   small padding         ≈  4 pt
+            // → signer name top edge  ≈ 75 pt from page bottom
+            // → overlay should sit ~ a bit above this, fully inside the gap.
+            //
+            // BUT we need to adjust if the block flowed onto a new page.
+            // Heuristic: if yBefore is null OR pageAfter != pageBefore, use
+            // the fallback constant. Otherwise compute baseY = yBefore - (height
+            // of date+PT TTS lines = 2*14 = 28).
+            float signerNameTopY;
+            if (yBefore.HasValue && pageAfter == pageBefore)
             {
-                var secItems = panel.Items.Where(i => i.Section == sec).ToList();
-                if (secItems.Count == 0) continue;
-                sectionNo++;
-                doc.Add(P($"{sectionNo}. {sec}", bold, 11, ColorDark).SetMarginBottom(6));
+                // We had a renderer position; estimate where signer name landed.
+                //   yBefore  = top of the area where sigTbl starts.
+                //   2 text lines used (date + PT TTS) before SignatureGap.
+                //   Then SignatureGap, then signer name.
+                signerNameTopY = yBefore.Value
+                                - 14f * 2f         // 2 lines of header text
+                                - SignatureGap;    // reserved gap
+            }
+            else
+            {
+                // Fallback: assume signer name is near page bottom.
+                signerNameTopY = 43f + 28f + 4f;   // bottom margin + 2 lines + pad
+            }
 
-                float[] cw = { 6, 37, 16, 23, 9, 9 };
-                var tbl = new Table(UnitValue.CreatePercentArray(cw))
-                    .UseAllAvailableWidth().SetMarginBottom(18);
-                TblHdr(tbl, bold,
-                    new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
-                    new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.LEFT,
-                            TextAlignment.LEFT,   TextAlignment.CENTER, TextAlignment.CENTER });
+            // Signature: width ~120pt, height proportional (signature is 477x373)
+            // → keeps it inside the SignatureGap (~100pt) and avoids spill into
+            // the "PT. Tritunggal Swarna" line above.
+            const float sigW = 130f;
+            const float sigH = sigW * 373f / 477f;   // ≈ 101pt
 
-                int itemNo = 0;
-                foreach (var item in secItems)
-                {
-                    itemNo++;
-                    var bg = itemNo % 2 == 0 ? ColorTableAlt : ColorWhite;
-                    tbl.AddCell(DC(itemNo.ToString(),        reg, 9, bg, TextAlignment.CENTER));
-                    tbl.AddCell(DC(item.ProductName,         reg, 9, bg, TextAlignment.LEFT));
-                    tbl.AddCell(DC(item.Vendor,              reg, 9, bg, TextAlignment.LEFT));
-                    tbl.AddCell(DC(item.ReferenceCode,       reg, 9, bg, TextAlignment.LEFT));
-                    tbl.AddCell(DC(item.Satuan,              reg, 9, bg, TextAlignment.CENTER));
-                    tbl.AddCell(DC(item.Quantity.ToString(), reg, 9, bg, TextAlignment.CENTER));
-                }
-                doc.Add(tbl);
+            // Place signature so its BOTTOM is just above the signer name top.
+            float overlaySigY = signerNameTopY + 2f;
+            float sigX        = pageWidth * 0.55f;     // right column
+
+            if (sigBytes != null)
+            {
+                var img = ImageDataFactory.Create(sigBytes);
+                canvas.AddImageFittedIntoRectangle(img,
+                    new ITextRectangle(sigX, overlaySigY, sigW, sigH), false);
+            }
+
+            // Stamp: square, overlapping signature (offset right + slight up)
+            const float stampW = 85f;
+            const float stampH = 85f;
+            float stampX = sigX + sigW * 0.55f;
+            float stampY = overlaySigY + 8f;
+
+            if (stampBytes != null)
+            {
+                var img = ImageDataFactory.Create(stampBytes);
+                canvas.AddImageFittedIntoRectangle(img,
+                    new ITextRectangle(stampX, stampY, stampW, stampH), false);
+            }
+
+            canvas.Release();
+        }
+        catch
+        {
+            // Silently skip overlay if assets missing — text signature still renders.
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  RINCIAN MATERIAL (Page 2+) — section divider rows
+    // ══════════════════════════════════════════════════════════════════════
+    private static void AddRincianMaterialTable(
+        Document doc, PdfFont reg, PdfFont bold,
+        IReadOnlyList<LineItem> items)
+    {
+        // Kolom: No (5%) / Material (35%) / Merek (16%) / Tipe (22%) / Satuan (9%) / Jumlah (13%)
+        float[] cw = { 5, 35, 16, 22, 9, 13 };
+        var tbl = new Table(UnitValue.CreatePercentArray(cw))
+            .UseAllAvailableWidth().SetMarginBottom(14);
+        TblHdr(tbl, bold,
+            new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
+            new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.LEFT,
+                    TextAlignment.LEFT,   TextAlignment.CENTER, TextAlignment.CENTER });
+
+        // Group items by *display section* (after mapping) preserving the
+        // canonical order defined below. Items keep their original order
+        // inside each group.
+        var groups = items
+            .Select((it, idx) => (Item: it, Idx: idx, Display: MapSectionToDisplay(it.Section)))
+            .GroupBy(x => x.Display)
+            .OrderBy(g => DisplaySectionOrder(g.Key))
+            .ToList();
+
+        int rowNo = 0;
+        foreach (var grp in groups)
+        {
+            if (grp.Key == null) continue;
+
+            // Section divider row — single cell spanning all 6 cols
+            var divider = new Cell(1, 6)
+                .SetBorder(new SolidBorder(ColorBorder, 0.4f))
+                .SetBackgroundColor(new DeviceRgb(232, 238, 246))
+                .SetPaddingTop(4).SetPaddingBottom(4).SetPaddingLeft(6).SetPaddingRight(6)
+                .Add(P(grp.Key + " :", bold, 9, ColorDark));
+            tbl.AddCell(divider);
+
+            foreach (var x in grp.OrderBy(g => g.Idx))
+            {
+                rowNo++;
+                var bg = (rowNo % 2 == 0) ? ColorRowAlt : (DeviceRgb?)null;
+                tbl.AddCell(DataCell(rowNo.ToString(),         reg, 9, bg, TextAlignment.CENTER));
+                tbl.AddCell(DataCell(x.Item.ProductName,        reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DataCell(x.Item.Vendor,             reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DataCell(x.Item.ReferenceCode,      reg, 9, bg, TextAlignment.LEFT));
+                tbl.AddCell(DataCell(x.Item.Satuan,             reg, 9, bg, TextAlignment.CENTER));
+                tbl.AddCell(DataCell(x.Item.Quantity.ToString(),reg, 9, bg, TextAlignment.CENTER));
             }
         }
+
+        doc.Add(tbl);
     }
 
-    // ── Find the letterhead image file ────────────────────────────────────
-    private static string? FindLetterheadImage(IDictionary<string, string> settings)
+    /// <summary>Map raw section name to display label per spec.</summary>
+    internal static string? MapSectionToDisplay(string section)
     {
-        // 1. Explicit path in Settings
+        var s = (section ?? "").Trim();
+        if (s.Equals("Box", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Box Panel", StringComparison.OrdinalIgnoreCase))
+            return "Box Panel";
+        if (s.Equals("Material Utama", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Incoming", StringComparison.OrdinalIgnoreCase))
+            return "Incoming";
+        if (s.Equals("Material Pendukung", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Outgoing", StringComparison.OrdinalIgnoreCase))
+            return "Outgoing";
+        if (s.Equals("Material Lainnya", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Karoseri", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Jasa", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Lainnya", StringComparison.OrdinalIgnoreCase))
+            return "Lainnya";
+        return string.IsNullOrWhiteSpace(s) ? "Incoming" : s;
+    }
+
+    private static int DisplaySectionOrder(string? display) => display switch
+    {
+        "Box Panel" => 0,
+        "Incoming"  => 1,
+        "Outgoing"  => 2,
+        "Lainnya"   => 3,
+        _           => 4,
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  LETTERHEAD BACKGROUND HANDLER
+    // ══════════════════════════════════════════════════════════════════════
+    private static void AttachLetterhead(PdfDocument pdf, IDictionary<string, string> settings)
+    {
+        // 1. Explicit override path (debug/testing)
         if (settings.TryGetValue("LetterheadImagePath", out var sp) &&
             !string.IsNullOrWhiteSpace(sp) && File.Exists(sp))
-            return sp;
-
-        // 2. Next to the EXE: letterhead.png / letterhead.jpg
-        var dir = AppDomain.CurrentDomain.BaseDirectory;
-        foreach (var name in new[] { "letterhead.png", "letterhead.jpg", "kopsurat.png", "kopsurat.jpg" })
         {
-            var path = System.IO.Path.Combine(dir, name);
-            if (File.Exists(path)) return path;
+            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
+                new BackgroundImageHandler(File.ReadAllBytes(sp)));
+            return;
         }
-        return null;   // no letterhead image found — no background drawn
+
+        // 2. Embedded resource
+        var bytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.letterhead.jpg");
+        if (bytes != null)
+            pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
+                new BackgroundImageHandler(bytes));
     }
 
-    // ══════════════════════════════════════════════════════════════════════
-    //  BACKGROUND IMAGE HANDLER  —  draws letterhead on every page
-    // ══════════════════════════════════════════════════════════════════════
     private sealed class BackgroundImageHandler : IEventHandler
     {
-        private readonly string   _imagePath;
-        private ImageData?        _imageData;
+        private readonly byte[] _imageBytes;
+        private ImageData?      _imageData;
 
-        public BackgroundImageHandler(string imagePath) { _imagePath = imagePath; }
+        public BackgroundImageHandler(byte[] imageBytes)
+        {
+            _imageBytes = imageBytes;
+        }
 
         public void HandleEvent(Event evt)
         {
@@ -429,250 +630,11 @@ public static class PdfLetterExport
             float w  = sz.GetWidth();
             float h  = sz.GetHeight();
 
-            // Lazy-load once, reuse for all pages
-            _imageData ??= ImageDataFactory.Create(_imagePath);
+            _imageData ??= ImageDataFactory.Create(_imageBytes);
 
-            // Draw image stretched to fill the entire page (background layer)
             var cv = new PdfCanvas(page);
-            // Transformation matrix: [width, 0, 0, height, x0, y0]
             cv.AddImageWithTransformationMatrix(_imageData, w, 0f, 0f, h, 0f, 0f, false);
             cv.Release();
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  PAGE 1  –  Surat Penawaran Harga
-    // ══════════════════════════════════════════════════════════════════════
-    private static void Page1(
-        Document doc, PdfFont reg, PdfFont bold,
-        string estNo,
-        string clientName, string? contactPhone, string? company, string? address, string? perihal,
-        DateTime date, string notes,
-        IReadOnlyList<LineItem> items,
-        decimal subtotal, decimal marginAmount, decimal shippingCost,
-        decimal taxPct, decimal taxAmt, decimal pphAmt, decimal total,
-        string signerName, string signerTitle, string offerLocation)
-    {
-        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
-        var dateStr = date.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
-
-        // ── Two-column header: [Nomor/Perihal/Lampiran] | [Kepada + address] ──
-        var hdrTbl = new Table(UnitValue.CreatePercentArray(new float[] { 48, 52 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER).SetMarginBottom(10);
-
-        // Left: ref block
-        var leftRefTbl = new Table(UnitValue.CreatePercentArray(new float[] { 28, 4, 68 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
-        AddRef(leftRefTbl, "Nomor",    estNo,              reg, bold);
-        AddRef(leftRefTbl, "Perihal",  !string.IsNullOrWhiteSpace(perihal) ? perihal : "Informasi Harga", reg, bold);
-        AddRef(leftRefTbl, "Lampiran", "Rincian Material", reg, bold);
-        var leftCell = new Cell().SetBorder(Border.NO_BORDER).Add(leftRefTbl);
-        hdrTbl.AddCell(leftCell);
-
-        // Right: Kepada block
-        // If company provided: "Kepada: [company]" + address, then "Up. [client]" centered
-        // If no company:       "Kepada Yth. [client]" + address (no Up. line)
-        bool hasCompany = !string.IsNullOrWhiteSpace(company);
-        var rightCell = new Cell().SetBorder(Border.NO_BORDER);
-        rightCell.Add(P("Kepada:", bold, 10, ColorDark).SetMarginBottom(1));
-        if (hasCompany)
-            rightCell.Add(P(company!, bold, 10, ColorDark).SetMarginBottom(0));
-        else if (!string.IsNullOrWhiteSpace(clientName))
-            rightCell.Add(P(clientName, bold, 10, ColorDark).SetMarginBottom(0));
-        if (!string.IsNullOrWhiteSpace(address))
-        {
-            foreach (var line in address.Split(new[]{'\n','\r'}, StringSplitOptions.RemoveEmptyEntries))
-                rightCell.Add(P(line.Trim(), reg, 10, ColorDark).SetMarginBottom(0));
-        }
-        if (!string.IsNullOrWhiteSpace(contactPhone))
-            rightCell.Add(P($"Telp: {contactPhone}", reg, 10, ColorDark).SetMarginBottom(0));
-        // "Up." stays inside the right cell — aligned with Kepada block
-        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
-            rightCell.Add(P($"\nUp. {clientName}", bold, 10, ColorDark).SetMarginBottom(0));
-        hdrTbl.AddCell(rightCell);
-        doc.Add(hdrTbl);
-        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(10));
-
-        // ── Salutation ────────────────────────────────────────────────────
-        doc.Add(P("Dengan hormat,", reg, 10, ColorDark).SetMarginBottom(4));
-        doc.Add(P(
-            "Berikut ini kami sampaikan informasi harga Panel sebagai berikut:",
-            reg, 10, ColorDark).SetMarginBottom(10));
-
-        // ── Price summary table ───────────────────────────────────────────
-        var allSections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
-            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
-        var sectionTotals = allSections
-            .Select(s => (Name: s, Total: items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
-            .Where(x => x.Total > 0)
-            .ToList();
-
-        float[] pw = { 8, 62, 30 };
-        var ptbl = new Table(UnitValue.CreatePercentArray(pw)).UseAllAvailableWidth().SetMarginBottom(4);
-        TblHdr(ptbl, bold,
-            new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
-            new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.RIGHT });
-
-        int no = 0;
-        foreach (var (name, st) in sectionTotals)
-        {
-            no++;
-            var bg = no % 2 == 0 ? ColorTableAlt : ColorWhite;
-            ptbl.AddCell(DC($"{no}.",      reg, 9, bg, TextAlignment.CENTER));
-            ptbl.AddCell(DC(name,          reg, 9, bg, TextAlignment.LEFT));
-            ptbl.AddCell(DC(Rp(st),        reg, 9, bg, TextAlignment.RIGHT));
-        }
-        doc.Add(ptbl);
-
-        // ── Cost summary (Subtotal → Margin → DPP → PPN → PPh → Ongkir → GRAND TOTAL) ──
-        // DPP (Dasar Pengenaan Pajak) = Subtotal + Margin + Ongkir (sebelum PPN/PPh)
-        decimal dpp = subtotal + marginAmount + shippingCost;
-        var sumTbl = new Table(UnitValue.CreatePercentArray(new float[] { 60, 40 }))
-            .UseAllAvailableWidth().SetMarginTop(6).SetMarginBottom(6);
-
-        void AddSumRow(string label, decimal value, bool isBold, bool isTotal = false, bool negative = false)
-        {
-            var fontL = isBold ? bold : reg;
-            var bg = isTotal ? ColorTotal : ColorWhite;
-            float size = isTotal ? 11 : 9;
-            string display = negative ? "- " + Rp(System.Math.Abs(value)) : Rp(value);
-
-            sumTbl.AddCell(new Cell()
-                .SetBackgroundColor(bg)
-                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
-                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
-                .SetPaddingLeft(8).SetPaddingRight(6)
-                .SetTextAlignment(TextAlignment.LEFT)
-                .Add(P(label, fontL, size, ColorDark)));
-            sumTbl.AddCell(new Cell()
-                .SetBackgroundColor(bg)
-                .SetBorder(new SolidBorder(ColorBorder, isTotal ? 0.8f : 0.3f))
-                .SetPaddingTop(isTotal ? 6 : 4).SetPaddingBottom(isTotal ? 6 : 4)
-                .SetPaddingLeft(8).SetPaddingRight(8)
-                .SetTextAlignment(TextAlignment.RIGHT)
-                .Add(P(display, fontL, size, ColorDark)));
-        }
-
-        AddSumRow("Subtotal",                                          subtotal,     false);
-        if (marginAmount != 0)
-            AddSumRow(marginAmount >= 0 ? "Margin"          : "Diskon",
-                      marginAmount,                                                  false,
-                      negative: marginAmount < 0);
-        if (shippingCost > 0)
-            AddSumRow("Ongkos Kirim",                                  shippingCost, false);
-        AddSumRow("DPP (Dasar Pengenaan Pajak)",                       dpp,          true);
-        if (taxAmt > 0)
-            AddSumRow($"PPN {taxPct:F0}%",                             taxAmt,       false);
-        if (pphAmt > 0)
-            AddSumRow($"PPh {(pphAmt > 0 && total < subtotal + marginAmount + shippingCost + taxAmt ? "(ditahan)" : "")}".TrimEnd(),
-                      pphAmt,                                                        false,
-                      negative: true);
-        AddSumRow("GRAND TOTAL",                                       total,        true,  isTotal: true);
-        doc.Add(sumTbl);
-
-        // ── Terbilang (grand total spelled in Indonesian words) ─────────
-        doc.Add(P("Terbilang: " + TerbilangFormatter.ToRupiah(total),
-            bold, 10, ColorDark)
-            .SetMarginTop(2)
-            .SetMarginBottom(6)
-            .SetFontColor(ColorDark)
-            .SetItalic());
-
-        if (taxPct > 0 && taxAmt <= 0)
-            doc.Add(P($"*) Harga belum termasuk PPN {taxPct:F0}%",
-                reg, 8, ColorMuted).SetMarginBottom(6).SetMarginLeft(2));
-        else
-            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
-
-        // ── Kondisi Penawaran ─────────────────────────────────────────────
-        doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
-        var conds = new[]
-        {
-            taxPct > 0
-                ? $"Harga belum termasuk PPN (menyesuaikan peraturan pemerintah)"
-                : "Harga sudah termasuk PPN",
-            $"Harga loco {city}",
-            "DP 30% saat PO kami terima dan pelunasan 70% pada saat barang akan dikirimkan",
-            "Harga tidak terikat dan dapat berubah sewaktu-waktu"
-        };
-        for (int ci = 0; ci < conds.Length; ci++)
-            doc.Add(P($"{ci + 1}. {conds[ci]}", reg, 10, ColorDark).SetMarginBottom(2));
-
-        if (!string.IsNullOrWhiteSpace(notes))
-        {
-            doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(4));
-            doc.Add(P($"Catatan: {notes}", reg, 9, ColorMuted).SetMarginBottom(2));
-        }
-        doc.Add(P("", reg, 4, ColorDark).SetMarginBottom(14));
-
-        // ── Closing ───────────────────────────────────────────────────────
-        doc.Add(P(
-            "Demikian surat penawaran ini kami sampaikan. " +
-            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.",
-            reg, 10, ColorDark).SetMarginBottom(20));
-
-        // ── Signature block ───────────────────────────────────────────────
-        var sigTbl = new Table(UnitValue.CreatePercentArray(new float[] { 45, 55 }))
-            .UseAllAvailableWidth().SetBorder(Border.NO_BORDER);
-        var sigCell = new Cell().SetBorder(Border.NO_BORDER)
-            .Add(P($"{city}, {dateStr}", reg, 10, ColorDark).SetMarginBottom(1))
-            .Add(P("PT. Tritunggal Swarna", reg, 10, ColorDark).SetMarginBottom(46));
-        if (!string.IsNullOrWhiteSpace(signerName))
-            sigCell.Add(P(signerName,  bold, 10, ColorDark).SetMarginBottom(0));
-        if (!string.IsNullOrWhiteSpace(signerTitle))
-            sigCell.Add(P(signerTitle, reg,   9, ColorMuted));
-        sigTbl.AddCell(sigCell);
-        sigTbl.AddCell(new Cell().SetBorder(Border.NO_BORDER));
-        doc.Add(sigTbl);
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  PAGE 2  –  Rincian Material
-    // ══════════════════════════════════════════════════════════════════════
-    private static void Page2(
-        Document doc, PdfFont reg, PdfFont bold,
-        IReadOnlyList<LineItem> items, string estNo)
-    {
-        doc.Add(P("RINCIAN MATERIAL", bold, 14, ColorDark)
-            .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(2));
-        doc.Add(P($"Ref: {estNo}", reg, 9, ColorMuted)
-            .SetTextAlignment(TextAlignment.CENTER).SetMarginBottom(10));
-        doc.Add(new LineSeparator(new iText.Kernel.Pdf.Canvas.Draw.SolidLine(1f))
-            .SetStrokeColor(ColorDark).SetMarginBottom(14));
-
-        var sections = new[] { "Material Utama", "Material Pendukung", "Material Lainnya",
-            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa" };
-        int panelNo  = 0;
-
-        foreach (var sec in sections)
-        {
-            var secItems = items.Where(i => i.Section == sec).ToList();
-            if (secItems.Count == 0) continue;
-            panelNo++;
-
-            doc.Add(P($"{panelNo}. {sec}", bold, 11, ColorDark).SetMarginBottom(6));
-
-            float[] cw = { 6, 37, 16, 23, 9, 9 };
-            var tbl = new Table(UnitValue.CreatePercentArray(cw))
-                .UseAllAvailableWidth().SetMarginBottom(18);
-            TblHdr(tbl, bold,
-                new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
-                new[] { TextAlignment.CENTER, TextAlignment.LEFT, TextAlignment.LEFT,
-                        TextAlignment.LEFT,   TextAlignment.CENTER, TextAlignment.CENTER });
-
-            int itemNo = 0;
-            foreach (var item in secItems)
-            {
-                itemNo++;
-                var bg = itemNo % 2 == 0 ? ColorTableAlt : ColorWhite;
-                tbl.AddCell(DC(itemNo.ToString(),        reg, 9, bg, TextAlignment.CENTER));
-                tbl.AddCell(DC(item.ProductName,         reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.Vendor,              reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.ReferenceCode,       reg, 9, bg, TextAlignment.LEFT));
-                tbl.AddCell(DC(item.Satuan,              reg, 9, bg, TextAlignment.CENTER));
-                tbl.AddCell(DC(item.Quantity.ToString(), reg, 9, bg, TextAlignment.CENTER));
-            }
-            doc.Add(tbl);
         }
     }
 
@@ -685,24 +647,27 @@ public static class PdfLetterExport
 
     private static Cell NB(string text, PdfFont font, float size, DeviceRgb color)
         => new Cell().SetBorder(Border.NO_BORDER)
-            .SetPadding(0).SetPaddingTop(2).SetPaddingBottom(2)   // zero horizontal — avoids double-gap around ':'
+            .SetPadding(0).SetPaddingTop(2).SetPaddingBottom(2)
             .Add(P(text, font, size, color));
 
-    private static Cell DC(string text, PdfFont font, float size, DeviceRgb bg,
-        TextAlignment align = TextAlignment.LEFT)
-        => new Cell()
-            .SetBackgroundColor(bg)
-            .SetBorder(new SolidBorder(ColorBorder, 0.3f))
+    private static Cell DataCell(string text, PdfFont font, float size,
+        DeviceRgb? bg, TextAlignment align)
+    {
+        var c = new Cell()
+            .SetBorder(new SolidBorder(ColorBorder, 0.4f))
             .SetPaddingTop(5).SetPaddingBottom(5).SetPaddingLeft(6).SetPaddingRight(6)
             .SetTextAlignment(align)
             .Add(P(text, font, size, ColorDark));
+        if (bg != null) c.SetBackgroundColor(bg);
+        return c;
+    }
 
     private static void TblHdr(Table tbl, PdfFont bold, string[] hdrs, TextAlignment[] aligns)
     {
         for (int i = 0; i < hdrs.Length; i++)
             tbl.AddHeaderCell(new Cell()
-                .SetBackgroundColor(ColorTableHdr)
-                .SetBorder(new SolidBorder(ColorBorder, 0.5f))
+                .SetBackgroundColor(new DeviceRgb(232, 238, 246))
+                .SetBorder(new SolidBorder(ColorBorder, 0.6f))
                 .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingLeft(6).SetPaddingRight(6)
                 .SetTextAlignment(aligns[i])
                 .Add(P(hdrs[i], bold, 9, ColorDark)));
@@ -710,21 +675,38 @@ public static class PdfLetterExport
 
     private static void AddRef(Table tbl, string label, string value, PdfFont reg, PdfFont bold)
     {
-        // Label left-aligned → unused column width = natural gap before ':'
-        tbl.AddCell(NB(label, bold, 10, ColorDark));
-        // ':' flush to label, 4 pt right padding = one space after ':'
-        tbl.AddCell(NB(":",   reg,  10, ColorDark).SetPaddingRight(4));
-        // Value starts right after the one-space gap
-        tbl.AddCell(NB(value, reg,  10, ColorDark));
+        tbl.AddCell(NB(label, reg, 10, ColorDark));
+        tbl.AddCell(NB(":",   reg, 10, ColorDark).SetPaddingRight(4));
+        tbl.AddCell(NB(value, reg, 10, ColorDark));
     }
 
     private static string Get(IDictionary<string, string> s, string key, string fallback)
         => s.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : fallback;
 
-    private static string Rp(decimal value)
-        => "Rp " + value.ToString("N0", IdCulture);
+    /// <summary>Format with Indonesian decimal (e.g. 4.320.000,-)</summary>
+    private static string RpDash(decimal value)
+        => value.ToString("N0", IdCulture) + ",-";
 
-    /// <summary>Format number Indonesian style without "Rp" prefix (e.g. 31.284.000)</summary>
-    private static string FmtNum(decimal value)
-        => value.ToString("N0", IdCulture);
+    private static Stream? TryLoadEmbedded(string name)
+    {
+        var asm = typeof(PdfLetterExport).Assembly;
+        return asm.GetManifestResourceStream(name);
+    }
+
+    private static byte[]? TryReadEmbedded(string name)
+    {
+        using var s = TryLoadEmbedded(name);
+        if (s == null) return null;
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
+    }
+
+    private static byte[] ReadAll(Stream s)
+    {
+        if (s is MemoryStream ms2) return ms2.ToArray();
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
+    }
 }

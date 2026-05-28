@@ -53,28 +53,36 @@ public class WordLetterExportTests
                 total:            5_189_250m,
                 settings:         new Dictionary<string, string>());
 
-            // 1. File ada & > 1KB
+            // 1. File ada & > 50KB (letterhead.jpg ter-embed di header)
             Assert.True(File.Exists(tempPath));
             var size = new FileInfo(tempPath).Length;
-            Assert.True(size > 1024, $"File terlalu kecil: {size} byte (harus > 1KB).");
+            Assert.True(size > 50_000,
+                $"File terlalu kecil: {size} byte — letterhead mungkin tidak ter-embed.");
 
             // 2. .docx bisa di-load kembali (artinya valid OpenXML structure)
             using (var doc = DocX.Load(tempPath))
             {
                 Assert.NotNull(doc);
-                // 3. Cek content: kumpulkan semua text di document
+                // 3. Cek content: kumpulkan semua text di document + table cells
                 var allText = string.Join("\n", doc.Paragraphs.Select(p => p.Text));
-                Assert.Contains("EST-20260527-001", allText);
-                Assert.Contains("Bpk. Budi", allText);
-                Assert.Contains("PT Test Sentosa", allText);
-                Assert.Contains("Bandung", allText);
-                // Cek summary contains "GRAND TOTAL"
                 var allTablesText = doc.Tables.SelectMany(t => t.Rows)
                     .SelectMany(r => r.Cells)
                     .SelectMany(c => c.Paragraphs)
                     .Select(p => p.Text);
                 var combinedTableText = string.Join(" | ", allTablesText);
-                Assert.Contains("GRAND TOTAL", combinedTableText);
+
+                // Identitas dokumen (boleh di paragraph atau di cell)
+                var everything = allText + " | " + combinedTableText;
+                Assert.Contains("EST-20260527-001", everything);
+                Assert.Contains("PT Test Sentosa", everything);
+                Assert.Contains("Bandung", everything);
+
+                // Kondisi penawaran (single-item version)
+                Assert.Contains("Kondisi Penawaran", everything);
+
+                // Signer default: Kuntjoro Handoko, Direktur
+                Assert.Contains("Kuntjoro Handoko", everything);
+                Assert.Contains("Direktur", everything);
             }
         }
         finally
@@ -134,16 +142,23 @@ public class WordLetterExportTests
                 settings:     new Dictionary<string, string>());
 
             Assert.True(File.Exists(tempPath));
-            Assert.True(new FileInfo(tempPath).Length > 1024);
+            // > 50KB — letterhead JPG ter-embed di header
+            Assert.True(new FileInfo(tempPath).Length > 50_000);
 
             using var doc = DocX.Load(tempPath);
             Assert.NotNull(doc);
             var allText = string.Join("\n", doc.Paragraphs.Select(p => p.Text));
-            Assert.Contains("GAB-2026-001", allText);
-            Assert.Contains("PT Alpha", allText);
-            // Panel info
-            Assert.Contains("Panel A", allText);
-            Assert.Contains("Panel B", allText);
+            var tableText = string.Join(" | ", doc.Tables.SelectMany(t => t.Rows)
+                .SelectMany(r => r.Cells).SelectMany(c => c.Paragraphs).Select(p => p.Text));
+            var everything = allText + " | " + tableText;
+
+            Assert.Contains("GAB-2026-001", everything);
+            Assert.Contains("PT Alpha", everything);
+            // Panel info muncul (di tabel ringkasan halaman 1 dan/atau heading rincian halaman 2+)
+            Assert.Contains("Panel A", everything);
+            Assert.Contains("Panel B", everything);
+            // Lampiran field menyebut "Rincian Material" pada multi-panel
+            Assert.Contains("Rincian Material", everything);
         }
         finally
         {

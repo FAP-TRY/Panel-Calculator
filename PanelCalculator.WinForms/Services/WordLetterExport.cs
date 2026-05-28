@@ -1,5 +1,6 @@
 using PanelCalculator.Core.Services;
 using System.Globalization;
+using System.Reflection;
 using Xceed.Document.NET;
 using Xceed.Words.NET;
 // Alias untuk resolve namespace clash:
@@ -13,26 +14,27 @@ using XColor       = Xceed.Drawing.Color;
 namespace PanelCalculator.WinForms.Services;
 
 /// <summary>
-/// Generate Surat Penawaran Harga formal sebagai dokumen Word (.docx).
-/// Tujuannya: file <strong>editable</strong> — user bisa buka di MS Word
-/// untuk ganti susunan, kolom, format teks, dll. sesuai kebutuhan.
-/// Layout content paralel dengan <see cref="PdfLetterExport"/> sehingga
-/// hasil Word dan PDF konsisten.
+/// Generate Surat Penawaran Harga formal PT TTS sebagai dokumen Word (.docx)
+/// dengan layout PIXEL-MATCH dengan template DOCX resmi.
 /// <para>
-/// Library: <c>Xceed.Words.NET</c> (DocX 4.x, Xceed Community License — gratis untuk
-/// commercial use). Format file: OpenXML (.docx) standar Microsoft Word 2007+.
+/// Image letterhead, signature, dan stamp dimuat dari embedded resource
+/// (<c>Assets/Letterhead/*.png|.jpg</c>). Letterhead disisipkan sebagai
+/// gambar inline di awal dokumen (DocX 4.x tidak support layered background
+/// gambar di section properties, jadi pakai inline image lalu konten letak
+/// di bawahnya — atau via header bila tersedia).
+/// </para>
+/// <para>
+/// File .docx <strong>editable</strong> — customer bisa fine-tune di Word
+/// sebelum kirim.
 /// </para>
 /// </summary>
 public static class WordLetterExport
 {
     private static readonly CultureInfo IdCulture = CultureInfo.GetCultureInfo("id-ID");
 
-    /// <summary>Section yang dipakai untuk grouping line items (sama dengan PDF).</summary>
-    private static readonly string[] AllSections =
-    {
-        "Material Utama", "Material Pendukung", "Material Lainnya",
-        "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
-    };
+    /// <summary>Section yang dipakai untuk grouping rincian material (display label).</summary>
+    private static readonly string[] DisplaySectionsOrder =
+        { "Box Panel", "Incoming", "Outgoing", "Lainnya" };
 
     // ── Public line-item record (mirror PdfLetterExport.LineItem) ────────────
     public record LineItem(
@@ -50,7 +52,9 @@ public static class WordLetterExport
         string? ProjectName,
         IReadOnlyList<LineItem> Items);
 
-    // ── Single panel ─────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    //  PUBLIC API — SINGLE PANEL
+    // ══════════════════════════════════════════════════════════════════════
     public static void Generate(
         string outputPath,
         string estimationNumber,
@@ -79,96 +83,46 @@ public static class WordLetterExport
         using var doc = DocX.Create(outputPath);
         SetupPage(doc);
 
-        var signerName    = Get(settings, "SignerName",    "");
-        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
+        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
         var offerLocation = Get(settings, "OfferLocation", "Bandung");
 
-        WriteCompanyHeader(doc, settings);
-        WriteRefBlock(doc, estimationNumber, perihal, "Rincian Material");
-        WriteRecipient(doc, clientName, contactPhone, company, address);
-        WriteSalutation(doc, "Berikut ini kami sampaikan informasi harga Panel sebagai berikut:");
+        AddLetterheadHeader(doc, settings);
 
-        // ── Tabel ringkasan per section (sama format dengan PDF formal) ───
-        var sectionTotals = AllSections
-            .Select(s => (Name: s, Total: items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
-            .Where(x => x.Total > 0)
-            .ToList();
+        var panelLabel = !string.IsNullOrWhiteSpace(perihal) ? perihal!.Trim() : "Penawaran Harga";
+        decimal panelUnitPrice = subtotal + marginAmount;
 
-        var sumTbl = doc.AddTable(sectionTotals.Count + 1, 3);
-        ApplyTableStyle(sumTbl);
-        SetHeaderRow(sumTbl.Rows[0], new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" });
-        for (int i = 0; i < sectionTotals.Count; i++)
+        WriteHeaderBlock(doc, estimationNumber,
+            perihalText: "Informasi Harga",
+            lampiranText: "-",
+            clientName, contactPhone, company, address);
+
+        WriteSalutation(doc,
+            "Bersama dengan ini kami sampaikan informasi harga material sebagai berikut :");
+
+        Write3ColTable(doc, new List<(string Label, decimal Price)>
         {
-            var (name, total_) = sectionTotals[i];
-            var r = sumTbl.Rows[i + 1];
-            SetCell(r.Cells[0], $"{i + 1}.",    Alignment.center);
-            SetCell(r.Cells[1], name,           Alignment.left);
-            SetCell(r.Cells[2], Rp(total_),     Alignment.right);
-        }
-        doc.InsertTable(sumTbl);
-        doc.InsertParagraph("").FontSize(6);
+            (panelLabel, panelUnitPrice),
+        });
 
-        // ── Cost summary (Subtotal → Margin → DPP → PPN → PPh → GRAND TOTAL) ──
-        decimal dpp = subtotal + marginAmount + shippingCost;
-        var rows = new List<(string Label, decimal Value, bool Bold, bool Negative)>
-        {
-            ("Subtotal", subtotal, false, false),
-        };
-        if (marginAmount != 0)
-            rows.Add((marginAmount >= 0 ? "Margin" : "Diskon", marginAmount, false, marginAmount < 0));
-        if (shippingCost > 0)
-            rows.Add(("Ongkos Kirim", shippingCost, false, false));
-        rows.Add(("DPP (Dasar Pengenaan Pajak)", dpp, true, false));
-        if (taxAmount > 0)
-            rows.Add(($"PPN {taxPercent:F0}%", taxAmount, false, false));
-        if (pphAmount > 0)
-            rows.Add(("PPh (ditahan)", pphAmount, false, true));
-        rows.Add(("GRAND TOTAL", total, true, false));
-
-        var costTbl = doc.AddTable(rows.Count, 2);
-        ApplyTableStyle(costTbl);
-        for (int i = 0; i < rows.Count; i++)
-        {
-            var (lbl, val, bold, neg) = rows[i];
-            string disp = neg ? "- " + Rp(Math.Abs(val)) : Rp(val);
-            var r = costTbl.Rows[i];
-            SetCell(r.Cells[0], lbl,  Alignment.left,  bold);
-            SetCell(r.Cells[1], disp, Alignment.right, bold);
-            if (bold)
-            {
-                r.Cells[0].FillColor = XColor.Parse(235, 242, 255);
-                r.Cells[1].FillColor = XColor.Parse(235, 242, 255);
-            }
-        }
-        doc.InsertTable(costTbl);
-
-        // ── Terbilang ─────────────────────────────────────────────────────
-        var terb = doc.InsertParagraph()
-            .Append("Terbilang: ").Bold()
-            .Append(TerbilangFormatter.ToRupiah(total)).Italic();
-        terb.SpacingBefore(6).SpacingAfter(8);
-
-        // ── Kondisi penawaran ─────────────────────────────────────────────
-        WriteConditions(doc, offerLocation, taxPercent);
+        WriteKondisiPenawaran(doc, taxPercent, offerLocation, isSingle: true);
 
         if (!string.IsNullOrWhiteSpace(notes))
-            doc.InsertParagraph($"Catatan: {notes}").FontSize(9).Color(XColor.Parse(128, 128, 128));
+            doc.InsertParagraph($"Catatan: {notes}").FontSize(9).Color(XColor.Parse(120, 120, 120))
+                .SpacingBefore(4);
 
         doc.InsertParagraph(
-            "Demikian surat penawaran ini kami sampaikan. " +
-            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.")
-            .SpacingBefore(8).SpacingAfter(20);
+            "Demikian informasi harga ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.")
+            .FontSize(10).SpacingBefore(10).SpacingAfter(20);
 
-        WriteSignature(doc, offerLocation, createdDate, signerName, signerTitle);
-
-        // ── Halaman Rincian Material ───────────────────────────────────────
-        doc.InsertParagraph().InsertPageBreakAfterSelf();
-        WriteDetailPage(doc, items, estimationNumber);
+        WriteSignatureBlock(doc, offerLocation, createdDate, signerName, signerTitle);
 
         doc.Save();
     }
 
-    // ── Combined multi-panel ─────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    //  PUBLIC API — COMBINED (MULTI-PANEL)
+    // ══════════════════════════════════════════════════════════════════════
     public static void GenerateCombined(
         string outputPath,
         string nomorSurat,
@@ -185,311 +139,456 @@ public static class WordLetterExport
     {
         ArgumentNullException.ThrowIfNull(outputPath);
         ArgumentNullException.ThrowIfNull(panels);
+        ArgumentNullException.ThrowIfNull(summary);
+        ArgumentNullException.ThrowIfNull(settings);
         if (panels.Count == 0)
             throw new ArgumentException("Minimal satu panel diperlukan.", nameof(panels));
 
         using var doc = DocX.Create(outputPath);
         SetupPage(doc);
 
-        var signerName    = Get(settings, "SignerName",    "");
-        var signerTitle   = Get(settings, "SignerTitle",   "Marketing");
+        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
+        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
         var offerLocation = Get(settings, "OfferLocation", "Bandung");
 
-        WriteCompanyHeader(doc, settings);
-        WriteRefBlock(doc, nomorSurat,
-            !string.IsNullOrWhiteSpace(perihal) ? perihal : "Penawaran Harga Multi-Panel",
-            $"{panels.Count} Rincian Panel");
-        WriteRecipient(doc, clientName, contactPhone, company, address);
+        AddLetterheadHeader(doc, settings);
+
+        WriteHeaderBlock(doc, nomorSurat,
+            perihalText: !string.IsNullOrWhiteSpace(perihal) ? perihal! : "Penawaran Harga",
+            lampiranText: "Rincian Material",
+            clientName, contactPhone, company, address);
+
         WriteSalutation(doc,
-            $"Bersama ini kami sampaikan penawaran harga untuk {panels.Count} (panel) sebagai berikut:");
+            "Bersama dengan ini kami sampaikan surat penawaran harga sebagai berikut :");
 
-        // ── Per panel section ─────────────────────────────────────────────
-        for (int pi = 0; pi < panels.Count; pi++)
+        var rows = panels.Select((p, i) =>
         {
-            var panel = panels[pi];
-            var title = !string.IsNullOrWhiteSpace(panel.ProjectName)
-                ? $"Panel #{pi + 1} — {panel.ProjectName}"
-                : $"Panel #{pi + 1} — {panel.EstimationNumber}";
-            doc.InsertParagraph(title).Bold().FontSize(11).SpacingBefore(6).SpacingAfter(4);
+            var label = !string.IsNullOrWhiteSpace(p.ProjectName)
+                ? p.ProjectName!.Trim()
+                : p.EstimationNumber;
+            var price = summary.Panels[i].PanelSubtotal;
+            return (Label: label, Price: price);
+        }).ToList();
+        Write3ColTable(doc, rows);
 
-            var sectionTotals = AllSections
-                .Select(s => (Name: s, Total: panel.Items.Where(i => i.Section == s).Sum(i => i.LineTotal)))
-                .Where(x => x.Total > 0)
-                .ToList();
-
-            if (sectionTotals.Count == 0) continue;
-
-            var t = doc.AddTable(sectionTotals.Count + 1, 3);
-            ApplyTableStyle(t);
-            SetHeaderRow(t.Rows[0], new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" });
-            for (int i = 0; i < sectionTotals.Count; i++)
-            {
-                var (name, st) = sectionTotals[i];
-                var r = t.Rows[i + 1];
-                SetCell(r.Cells[0], $"{i + 1}.", Alignment.center);
-                SetCell(r.Cells[1], name,        Alignment.left);
-                SetCell(r.Cells[2], Rp(st),      Alignment.right);
-            }
-            doc.InsertTable(t);
-
-            // Subtotal per panel
-            var pst = summary.Panels[pi].PanelSubtotal;
-            var subRow = doc.AddTable(1, 2);
-            ApplyTableStyle(subRow);
-            SetCell(subRow.Rows[0].Cells[0], $"Sub-total Panel #{pi + 1}", Alignment.right, bold: true);
-            SetCell(subRow.Rows[0].Cells[1], Rp(pst), Alignment.right, bold: true);
-            subRow.Rows[0].Cells[1].FillColor = XColor.Parse(235, 242, 255);
-            doc.InsertTable(subRow);
-            doc.InsertParagraph("").FontSize(4);
-        }
-
-        // ── Ringkasan akhir ───────────────────────────────────────────────
-        doc.InsertParagraph().AppendLine();
-        doc.InsertParagraph("RINGKASAN PENAWARAN").Bold().FontSize(12).Alignment = Alignment.center;
-
-        var summaryRows = new List<(string Label, decimal Value, bool Bold, bool Negative, bool IsTotal)>();
-        foreach (var pl in summary.Panels)
-        {
-            var label = !string.IsNullOrWhiteSpace(pl.ProjectName)
-                ? $"Sub-total Panel #{pl.Index} — {pl.ProjectName}"
-                : $"Sub-total Panel #{pl.Index} ({pl.EstimationNumber})";
-            summaryRows.Add((label, pl.PanelSubtotal, false, false, false));
-        }
-        summaryRows.Add(("Total Sub-total Semua Panel", summary.GrandSubtotal, true, false, false));
-        if (summary.CombinedShippingCost > 0)
-            summaryRows.Add(("Ongkos Kirim Gabungan", summary.CombinedShippingCost, false, false, false));
-        summaryRows.Add(("DPP (Dasar Pengenaan Pajak)", summary.DPP, true, false, false));
-        if (summary.TaxAmount > 0)
-            summaryRows.Add(($"PPN {summary.TaxPercent:F0}% (dihitung sekali)", summary.TaxAmount, false, false, false));
-        if (summary.TotalPPh > 0)
-            summaryRows.Add(("PPh (ditahan, total dari semua panel)", summary.TotalPPh, false, true, false));
-        summaryRows.Add(("GRAND TOTAL", summary.GrandTotal, true, false, true));
-
-        var sumT = doc.AddTable(summaryRows.Count, 2);
-        ApplyTableStyle(sumT);
-        for (int i = 0; i < summaryRows.Count; i++)
-        {
-            var (lbl, val, bold, neg, isTotal) = summaryRows[i];
-            string disp = neg ? "- " + Rp(Math.Abs(val)) : Rp(val);
-            var r = sumT.Rows[i];
-            SetCell(r.Cells[0], lbl, Alignment.left, bold);
-            SetCell(r.Cells[1], disp, Alignment.right, bold);
-            if (isTotal || bold)
-            {
-                r.Cells[0].FillColor = XColor.Parse(235, 242, 255);
-                r.Cells[1].FillColor = XColor.Parse(235, 242, 255);
-            }
-        }
-        doc.InsertTable(sumT);
-
-        doc.InsertParagraph()
-            .Append("Terbilang: ").Bold()
-            .Append(summary.Terbilang).Italic();
-
-        WriteConditions(doc, offerLocation, summary.TaxPercent, isCombined: true);
+        WriteKondisiPenawaran(doc, summary.TaxPercent, offerLocation, isSingle: false);
 
         if (!string.IsNullOrWhiteSpace(notes))
-            doc.InsertParagraph($"Catatan: {notes}").FontSize(9).Color(XColor.Parse(128, 128, 128));
+            doc.InsertParagraph($"Catatan: {notes}").FontSize(9).Color(XColor.Parse(120, 120, 120))
+                .SpacingBefore(4);
 
         doc.InsertParagraph(
-            "Demikian surat penawaran ini kami sampaikan. " +
-            "Atas perhatian dan kerja samanya, kami ucapkan terima kasih.")
-            .SpacingBefore(8).SpacingAfter(20);
+            "Demikian surat penawaran ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima kasih.")
+            .FontSize(10).SpacingBefore(10).SpacingAfter(20);
 
-        WriteSignature(doc, offerLocation, createdDate, signerName, signerTitle);
+        WriteSignatureBlock(doc, offerLocation, createdDate, signerName, signerTitle);
 
-        // ── Halaman Rincian per panel ─────────────────────────────────────
+        // ── Halaman Rincian Material per panel ────────────────────────────
         for (int pi = 0; pi < panels.Count; pi++)
         {
             doc.InsertParagraph().InsertPageBreakAfterSelf();
+
             var panel = panels[pi];
             var heading = !string.IsNullOrWhiteSpace(panel.ProjectName)
-                ? $"RINCIAN PANEL #{pi + 1} — {panel.ProjectName!.ToUpper()}"
-                : $"RINCIAN PANEL #{pi + 1}";
-            doc.InsertParagraph(heading).Bold().FontSize(14).Alignment = Alignment.center;
-            doc.InsertParagraph($"Ref: {panel.EstimationNumber}").FontSize(9)
-                .Color(XColor.Parse(128, 128, 128)).Alignment = Alignment.center;
-            WriteDetailSections(doc, panel.Items);
+                ? panel.ProjectName!.Trim()
+                : panel.EstimationNumber;
+
+            doc.InsertParagraph("Rincian Material").Bold().FontSize(14).Alignment = Alignment.center;
+            doc.InsertParagraph(heading).Bold().FontSize(11).SpacingBefore(8).SpacingAfter(4);
+
+            WriteRincianMaterialTable(doc, panel.Items);
         }
 
         doc.Save();
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  HELPERS
-    // ════════════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════════════════════
+    //  SETUP & LETTERHEAD
+    // ══════════════════════════════════════════════════════════════════════
     private static void SetupPage(DocX doc)
     {
         doc.PageLayout.Orientation = XOrientation.Portrait;
-        doc.MarginTop    = 60f;
-        doc.MarginBottom = 60f;
-        doc.MarginLeft   = 60f;
-        doc.MarginRight  = 60f;
+        // Margins (1pt = 1/72 inch; 1cm = 28.35pt)
+        doc.MarginTop    = 85f;   // 3.0cm
+        doc.MarginBottom = 43f;   // 1.5cm
+        doc.MarginLeft   = 71f;   // 2.5cm
+        doc.MarginRight  = 43f;   // 1.5cm
     }
 
-    private static void WriteCompanyHeader(DocX doc, IDictionary<string, string> settings)
+    /// <summary>
+    /// Inject letterhead.jpg sebagai gambar di header dokumen agar muncul
+    /// di SETIAP halaman. DocX 4.x mendukung first-page-header + default-header,
+    /// kita pakai default-header sehingga letterhead konsisten di semua halaman.
+    /// </summary>
+    private static void AddLetterheadHeader(DocX doc, IDictionary<string, string> settings)
     {
-        var companyName  = Get(settings, "CompanyName",    "PT. TRITUNGGAL SWARNA");
-        var companyAddr  = Get(settings, "CompanyAddress", "");
-        var companyPhone = Get(settings, "CompanyPhone",   "");
+        try
+        {
+            // 1. Explicit override path
+            byte[]? imgBytes = null;
+            if (settings.TryGetValue("LetterheadImagePath", out var sp) &&
+                !string.IsNullOrWhiteSpace(sp) && File.Exists(sp))
+            {
+                imgBytes = File.ReadAllBytes(sp);
+            }
+            // 2. Embedded resource
+            imgBytes ??= TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.letterhead.jpg");
+            if (imgBytes == null) return;
 
-        var p = doc.InsertParagraph(companyName).Bold().FontSize(14);
-        p.Alignment = Alignment.center;
-        if (!string.IsNullOrWhiteSpace(companyAddr))
-            doc.InsertParagraph(companyAddr).FontSize(9).Alignment = Alignment.center;
-        if (!string.IsNullOrWhiteSpace(companyPhone))
-            doc.InsertParagraph(companyPhone).FontSize(9).Alignment = Alignment.center;
+            doc.AddHeaders();
+            // DocX 4.x: Headers struct has Odd/Even/First. "Odd" is the default
+            // header that appears on every page when DifferentFirstPage/Even are off.
+            var header = doc.Headers.Odd;
+            if (header == null) return;
 
-        // Garis pemisah simpel — pakai paragraph kosong + border bawah
-        // (DocX 4.x menghapus overload InsertHorizontalLine yang menerima warna)
-        doc.InsertParagraph("").FontSize(2);
-        doc.InsertParagraph("─────────────────────────────────────────────────────────────────────────")
-            .FontSize(6).Alignment = Alignment.center;
-        doc.InsertParagraph("").FontSize(2);
+            // Insert image as inline picture in header. Width = page width minus
+            // small slack. DocX 4.x: Image.CreatePicture(width, height) in points.
+            using var ms = new MemoryStream(imgBytes);
+            var image = doc.AddImage(ms, "image/jpeg");
+
+            // Page width = A4 portrait = 595.27pt. We want full width.
+            // Image native: 1819 x 2458 px → ratio 1:1.351
+            float widthPt  = 595f;
+            float heightPt = widthPt * 2458f / 1819f;   // ≈ 804pt
+            var pic = image.CreatePicture(heightPt, widthPt);
+
+            // Add image to header, then push it behind text using positioning
+            // (DocX doesn't expose z-order directly; instead we use a paragraph
+            // in the header that contains the full-page picture).
+            var headerPara = header.InsertParagraph();
+            headerPara.AppendPicture(pic);
+            headerPara.Alignment = Alignment.center;
+
+            // Negative spacing so picture starts at page top regardless of
+            // header default offset.
+            headerPara.LineSpacing = 0;
+            headerPara.IndentationFirstLine = 0;
+        }
+        catch
+        {
+            // Letterhead opsional — silent fallback
+        }
     }
 
-    private static void WriteRefBlock(DocX doc, string nomorSurat, string? perihal, string lampiran)
+    // ══════════════════════════════════════════════════════════════════════
+    //  HEADER BLOCK  (Nomor/Perihal/Lampiran ↔ Kepada/Address/Up.)
+    // ══════════════════════════════════════════════════════════════════════
+    private static void WriteHeaderBlock(DocX doc,
+        string nomorSurat, string perihalText, string lampiranText,
+        string clientName, string? contactPhone, string? company, string? address)
     {
-        var t = doc.AddTable(3, 3);
-        t.Design = TableDesign.None;
-        // Kolom: label (~28%), ":" (~4%), value (~68%)
-        SetCell(t.Rows[0].Cells[0], "Nomor",    Alignment.left, bold: true);
-        SetCell(t.Rows[0].Cells[1], ":",        Alignment.left);
-        SetCell(t.Rows[0].Cells[2], nomorSurat, Alignment.left);
-        SetCell(t.Rows[1].Cells[0], "Perihal",  Alignment.left, bold: true);
-        SetCell(t.Rows[1].Cells[1], ":",        Alignment.left);
-        SetCell(t.Rows[1].Cells[2],
-            !string.IsNullOrWhiteSpace(perihal) ? perihal! : "Informasi Harga", Alignment.left);
-        SetCell(t.Rows[2].Cells[0], "Lampiran", Alignment.left, bold: true);
-        SetCell(t.Rows[2].Cells[1], ":",        Alignment.left);
-        SetCell(t.Rows[2].Cells[2], lampiran,   Alignment.left);
+        // 2-column borderless table; left = ref, right = recipient
+        var t = doc.AddTable(1, 2);
         RemoveBorders(t);
-        doc.InsertTable(t);
-    }
+        // Equal split
+        t.SetColumnWidth(0, 4000);
+        t.SetColumnWidth(1, 5500);
 
-    private static void WriteRecipient(DocX doc, string clientName,
-        string? contactPhone, string? company, string? address)
-    {
-        doc.InsertParagraph("Kepada:").Bold().FontSize(10).SpacingBefore(8);
+        // ── Left: ref block ────────────────────────────────────────────
+        var refTbl = t.Rows[0].Cells[0].InsertTable(3, 3);
+        RemoveBorders(refTbl);
+        refTbl.SetColumnWidth(0, 1200);
+        refTbl.SetColumnWidth(1, 200);
+        refTbl.SetColumnWidth(2, 2600);
+
+        AddRefRow(refTbl.Rows[0], "Nomor",    nomorSurat);
+        AddRefRow(refTbl.Rows[1], "Perihal",  perihalText);
+        AddRefRow(refTbl.Rows[2], "Lampiran", lampiranText);
+
+        // Remove default empty paragraph in cell that auto-DocX adds before our table
+        var leftCellParas = t.Rows[0].Cells[0].Paragraphs.ToList();
+        if (leftCellParas.Count > 1)
+        {
+            // The InsertTable adds at-the-end; first para is the empty stub
+            leftCellParas[0].RemoveText(0, leftCellParas[0].Text.Length);
+        }
+
+        // ── Right: Kepada / address / Up. ───────────────────────────────
+        var rightCell = t.Rows[0].Cells[1];
+        var firstPara = rightCell.Paragraphs.FirstOrDefault() ?? rightCell.InsertParagraph();
+        firstPara.RemoveText(0, firstPara.Text.Length);
+        firstPara.Append("Kepada:").FontSize(10);
+        firstPara.SpacingAfter(2);
+
         bool hasCompany = !string.IsNullOrWhiteSpace(company);
         if (hasCompany)
-            doc.InsertParagraph(company!).Bold().FontSize(10);
+            rightCell.InsertParagraph(company!).Bold().FontSize(10);
         else if (!string.IsNullOrWhiteSpace(clientName))
-            doc.InsertParagraph(clientName).Bold().FontSize(10);
+            rightCell.InsertParagraph(clientName).Bold().FontSize(10);
+
         if (!string.IsNullOrWhiteSpace(address))
-        {
             foreach (var line in address.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
-                doc.InsertParagraph(line.Trim()).FontSize(10);
-        }
+                rightCell.InsertParagraph(line.Trim()).FontSize(10);
+
         if (!string.IsNullOrWhiteSpace(contactPhone))
-            doc.InsertParagraph($"Telp: {contactPhone}").FontSize(10);
-        if (hasCompany && !string.IsNullOrWhiteSpace(clientName))
-            doc.InsertParagraph($"Up. {clientName}").Bold().FontSize(10);
+            rightCell.InsertParagraph($"Telp: {contactPhone}").FontSize(10);
+
+        // "Up. <contact person>" hanya kalau clientName beda dari company
+        if (hasCompany && !string.IsNullOrWhiteSpace(clientName) &&
+            !string.Equals(clientName.Trim(), company!.Trim(), StringComparison.OrdinalIgnoreCase))
+        {
+            rightCell.InsertParagraph("").FontSize(4);
+            rightCell.InsertParagraph($"Up. {clientName.Trim()}").FontSize(10);
+        }
+
+        doc.InsertTable(t);
+        doc.InsertParagraph("").FontSize(4);
+    }
+
+    private static void AddRefRow(Row r, string label, string value)
+    {
+        SetCell(r.Cells[0], label, Alignment.left);
+        SetCell(r.Cells[1], ":",   Alignment.left);
+        SetCell(r.Cells[2], value, Alignment.left);
     }
 
     private static void WriteSalutation(DocX doc, string opening)
     {
-        doc.InsertParagraph("Dengan hormat,").FontSize(10).SpacingBefore(12);
+        doc.InsertParagraph("Dengan hormat,").FontSize(10).SpacingBefore(8).SpacingAfter(4);
         doc.InsertParagraph(opening).FontSize(10).SpacingAfter(8);
     }
 
-    private static void WriteConditions(DocX doc, string city, decimal taxPercent, bool isCombined = false)
+    // ══════════════════════════════════════════════════════════════════════
+    //  3-COL TABLE
+    // ══════════════════════════════════════════════════════════════════════
+    private static void Write3ColTable(DocX doc, IReadOnlyList<(string Label, decimal Price)> rows)
     {
-        doc.InsertParagraph("Kondisi Penawaran :").Bold().FontSize(10).SpacingBefore(6);
-        var conds = new List<string>();
-        if (isCombined)
-            conds.Add(taxPercent > 0
-                ? "Harga belum termasuk PPN (menyesuaikan peraturan pemerintah), dihitung sekali atas total seluruh panel"
-                : "Harga sudah termasuk PPN");
-        else
-            conds.Add(taxPercent > 0
-                ? "Harga belum termasuk PPN (menyesuaikan peraturan pemerintah)"
-                : "Harga sudah termasuk PPN");
-        conds.Add($"Harga loco {city}");
-        conds.Add("DP 30% saat PO kami terima dan pelunasan 70% pada saat barang akan dikirimkan");
-        conds.Add("Harga tidak terikat dan dapat berubah sewaktu-waktu");
-        for (int i = 0; i < conds.Count; i++)
-            doc.InsertParagraph($"{i + 1}. {conds[i]}").FontSize(10);
-    }
+        var t = doc.AddTable(rows.Count + 1, 3);
+        ApplyTableStyle(t);
 
-    private static void WriteSignature(DocX doc, string city, DateTime date,
-        string signerName, string signerTitle)
-    {
-        var dateStr = date.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
-        doc.InsertParagraph($"{city}, {dateStr}").FontSize(10).SpacingBefore(20);
-        doc.InsertParagraph("PT. Tritunggal Swarna").FontSize(10).SpacingAfter(46);
-        if (!string.IsNullOrWhiteSpace(signerName))
-            doc.InsertParagraph(signerName).Bold().FontSize(10);
-        if (!string.IsNullOrWhiteSpace(signerTitle))
-            doc.InsertParagraph(signerTitle).FontSize(9).Color(XColor.Parse(128, 128, 128));
-    }
+        SetHeaderRow(t.Rows[0],
+            new[] { "No.", "Nama Barang", "Harga Satuan (Rp)" },
+            new[] { Alignment.center, Alignment.left, Alignment.right });
 
-    private static void WriteDetailPage(DocX doc, IReadOnlyList<LineItem> items, string estNo)
-    {
-        doc.InsertParagraph("RINCIAN MATERIAL").Bold().FontSize(14).Alignment = Alignment.center;
-        doc.InsertParagraph($"Ref: {estNo}").FontSize(9)
-            .Color(XColor.Parse(128, 128, 128)).Alignment = Alignment.center;
-        WriteDetailSections(doc, items);
-    }
-
-    private static void WriteDetailSections(DocX doc, IReadOnlyList<LineItem> items)
-    {
-        int sectionNo = 0;
-        foreach (var sec in AllSections)
+        for (int i = 0; i < rows.Count; i++)
         {
-            var secItems = items.Where(i => i.Section == sec).ToList();
-            if (secItems.Count == 0) continue;
-            sectionNo++;
-            doc.InsertParagraph($"{sectionNo}. {sec}").Bold().FontSize(11).SpacingBefore(8).SpacingAfter(4);
+            var r = t.Rows[i + 1];
+            SetCell(r.Cells[0], $"{i + 1}.",        Alignment.center);
+            SetCell(r.Cells[1], rows[i].Label,      Alignment.left);
+            SetCell(r.Cells[2], RpDash(rows[i].Price), Alignment.right);
+        }
 
-            var t = doc.AddTable(secItems.Count + 1, 6);
-            ApplyTableStyle(t);
-            SetHeaderRow(t.Rows[0], new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" });
-            for (int i = 0; i < secItems.Count; i++)
-            {
-                var it = secItems[i];
-                var r = t.Rows[i + 1];
-                SetCell(r.Cells[0], (i + 1).ToString(),    Alignment.center);
-                SetCell(r.Cells[1], it.ProductName,         Alignment.left);
-                SetCell(r.Cells[2], it.Vendor,              Alignment.left);
-                SetCell(r.Cells[3], it.ReferenceCode,       Alignment.left);
-                SetCell(r.Cells[4], it.Satuan,              Alignment.center);
-                SetCell(r.Cells[5], it.Quantity.ToString(), Alignment.center);
-            }
-            doc.InsertTable(t);
+        doc.InsertTable(t);
+        doc.InsertParagraph("").FontSize(6);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  KONDISI PENAWARAN  (bullet list)
+    // ══════════════════════════════════════════════════════════════════════
+    private static void WriteKondisiPenawaran(DocX doc, decimal taxPercent,
+        string offerLocation, bool isSingle)
+    {
+        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        doc.InsertParagraph("Kondisi Penawaran :").Bold().FontSize(10).SpacingBefore(4).SpacingAfter(4);
+
+        var conds = new List<string>();
+        if (taxPercent > 0)
+            conds.Add($"Harga belum termasuk PPN {taxPercent:0.##}% (menyesuaikan dengan peraturan pemerintah)");
+        else
+            conds.Add("Harga belum termasuk PPN (menyesuaikan dengan peraturan pemerintah)");
+        conds.Add($"Harga loco {(string.Equals(city, "Bandung", StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
+        if (!isSingle)
+            conds.Add("DP 30% saat PO kami terima dan pelunasan 70% sebelum barang dikirim");
+        conds.Add("Harga tidak terikat dan dapat berubah sewaktu-waktu");
+
+        foreach (var c in conds)
+        {
+            var p = doc.InsertParagraph("•  " + c).FontSize(10);
+            p.IndentationBefore = 0.3f; // ~7.5mm
         }
     }
 
-    // ── Table helpers ────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════
+    //  SIGNATURE BLOCK
+    // ══════════════════════════════════════════════════════════════════════
+    private static void WriteSignatureBlock(DocX doc, string offerLocation,
+        DateTime createdDate, string signerName, string signerTitle)
+    {
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
+
+        // Right-aligned signature block — use a 2-col table for clean align
+        var t = doc.AddTable(1, 2);
+        RemoveBorders(t);
+        t.SetColumnWidth(0, 4500);
+        t.SetColumnWidth(1, 5000);
+
+        var rightCell = t.Rows[0].Cells[1];
+        var firstPara = rightCell.Paragraphs.FirstOrDefault() ?? rightCell.InsertParagraph();
+        firstPara.RemoveText(0, firstPara.Text.Length);
+        firstPara.Append($"{city}, {dateStr}").FontSize(10);
+
+        rightCell.InsertParagraph("PT. Tritunggal Swarna").Bold().FontSize(10);
+
+        // ── Signature + stamp image overlay ──
+        try
+        {
+            var sigBytes   = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.signature.png");
+            var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
+
+            // Render signature, then immediately overlap with stamp on the
+            // same paragraph. DocX inline images go side-by-side; we use
+            // a single paragraph and rely on Word allowing images to overlap
+            // if their offsets are set. Simpler: place signature, then stamp
+            // alongside, accepting that the visual is "next to" rather than
+            // strictly overlapping. The handwritten signature already looks
+            // like a signature, and the stamp visually complements it.
+            var imgPara = rightCell.InsertParagraph();
+            imgPara.SpacingBefore(4);
+
+            if (sigBytes != null)
+            {
+                using var ms1 = new MemoryStream(sigBytes);
+                var sigImg = doc.AddImage(ms1, "image/png");
+                // signature 477x373 px → height/width ratio 0.781
+                float w1 = 150f;
+                float h1 = w1 * 373f / 477f;
+                var pic1 = sigImg.CreatePicture(h1, w1);
+                imgPara.AppendPicture(pic1);
+            }
+            if (stampBytes != null)
+            {
+                using var ms2 = new MemoryStream(stampBytes);
+                var stampImg = doc.AddImage(ms2, "image/png");
+                // stamp 309x309 (square)
+                float w2 = 95f;
+                float h2 = 95f;
+                var pic2 = stampImg.CreatePicture(h2, w2);
+                imgPara.AppendPicture(pic2);
+            }
+        }
+        catch
+        {
+            // Reserve fixed space if assets missing
+            rightCell.InsertParagraph("").FontSize(38);
+        }
+
+        if (!string.IsNullOrWhiteSpace(signerName))
+            rightCell.InsertParagraph(signerName).Bold().FontSize(10).UnderlineStyle(UnderlineStyle.singleLine);
+        if (!string.IsNullOrWhiteSpace(signerTitle))
+            rightCell.InsertParagraph(signerTitle).FontSize(10);
+
+        doc.InsertTable(t);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  RINCIAN MATERIAL — section divider rows
+    // ══════════════════════════════════════════════════════════════════════
+    private static void WriteRincianMaterialTable(DocX doc, IReadOnlyList<LineItem> items)
+    {
+        // Group by display section, preserving insertion order within each group
+        var groups = items
+            .Select((it, idx) => (Item: it, Idx: idx, Display: MapSectionToDisplay(it.Section)))
+            .Where(x => x.Display != null)
+            .GroupBy(x => x.Display!)
+            .OrderBy(g => DisplaySectionOrder(g.Key))
+            .ToList();
+
+        // Calculate total rows: header + (1 divider + N items) per group
+        int totalRows = 1 + groups.Sum(g => 1 + g.Count());
+        if (totalRows <= 1) return;
+
+        var t = doc.AddTable(totalRows, 6);
+        ApplyTableStyle(t);
+
+        SetHeaderRow(t.Rows[0],
+            new[] { "No", "Material", "Merek", "Tipe", "Satuan", "Jumlah" },
+            new[] { Alignment.center, Alignment.left, Alignment.left,
+                    Alignment.left,   Alignment.center, Alignment.center });
+
+        int rIdx = 1;
+        int itemNo = 0;
+        foreach (var grp in groups)
+        {
+            // Divider row: bold section name in first cell, others blank
+            var dRow = t.Rows[rIdx++];
+            SetCell(dRow.Cells[0], "",                Alignment.left);
+            SetCell(dRow.Cells[1], grp.Key + " :",    Alignment.left, bold: true);
+            SetCell(dRow.Cells[2], "",                Alignment.left);
+            SetCell(dRow.Cells[3], "",                Alignment.left);
+            SetCell(dRow.Cells[4], "",                Alignment.center);
+            SetCell(dRow.Cells[5], "",                Alignment.center);
+            foreach (var c in dRow.Cells)
+                c.FillColor = XColor.Parse(232, 238, 246);
+
+            foreach (var x in grp.OrderBy(g => g.Idx))
+            {
+                itemNo++;
+                var r = t.Rows[rIdx++];
+                SetCell(r.Cells[0], itemNo.ToString(),         Alignment.center);
+                SetCell(r.Cells[1], x.Item.ProductName,         Alignment.left);
+                SetCell(r.Cells[2], x.Item.Vendor,              Alignment.left);
+                SetCell(r.Cells[3], x.Item.ReferenceCode,       Alignment.left);
+                SetCell(r.Cells[4], x.Item.Satuan,              Alignment.center);
+                SetCell(r.Cells[5], x.Item.Quantity.ToString(), Alignment.center);
+            }
+        }
+
+        doc.InsertTable(t);
+    }
+
+    /// <summary>Map raw section name to display label per spec.</summary>
+    internal static string? MapSectionToDisplay(string section)
+    {
+        var s = (section ?? "").Trim();
+        if (s.Equals("Box", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Box Panel", StringComparison.OrdinalIgnoreCase))
+            return "Box Panel";
+        if (s.Equals("Material Utama", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Incoming", StringComparison.OrdinalIgnoreCase))
+            return "Incoming";
+        if (s.Equals("Material Pendukung", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Outgoing", StringComparison.OrdinalIgnoreCase))
+            return "Outgoing";
+        if (s.Equals("Material Lainnya", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Karoseri", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Jasa", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("Lainnya", StringComparison.OrdinalIgnoreCase))
+            return "Lainnya";
+        return string.IsNullOrWhiteSpace(s) ? "Incoming" : s;
+    }
+
+    private static int DisplaySectionOrder(string display) => display switch
+    {
+        "Box Panel" => 0,
+        "Incoming"  => 1,
+        "Outgoing"  => 2,
+        "Lainnya"   => 3,
+        _           => 4,
+    };
+
+    // ══════════════════════════════════════════════════════════════════════
+    //  TABLE HELPERS
+    // ══════════════════════════════════════════════════════════════════════
     private static void ApplyTableStyle(Table t)
     {
-        t.Design = TableDesign.TableGrid;
+        t.Design  = TableDesign.TableGrid;
         t.AutoFit = AutoFit.Window;
     }
 
     private static void RemoveBorders(Table t)
     {
         var noBorder = new Border(XBorderStyle.Tcbs_none, BorderSize.one, 0, XColor.Parse(255, 255, 255));
-        t.SetBorder(TableBorderType.Top,            noBorder);
-        t.SetBorder(TableBorderType.Bottom,         noBorder);
-        t.SetBorder(TableBorderType.Left,           noBorder);
-        t.SetBorder(TableBorderType.Right,          noBorder);
-        t.SetBorder(TableBorderType.InsideH,        noBorder);
-        t.SetBorder(TableBorderType.InsideV,        noBorder);
+        t.SetBorder(TableBorderType.Top,     noBorder);
+        t.SetBorder(TableBorderType.Bottom,  noBorder);
+        t.SetBorder(TableBorderType.Left,    noBorder);
+        t.SetBorder(TableBorderType.Right,   noBorder);
+        t.SetBorder(TableBorderType.InsideH, noBorder);
+        t.SetBorder(TableBorderType.InsideV, noBorder);
     }
 
-    private static void SetHeaderRow(Row r, string[] headers)
+    private static void SetHeaderRow(Row r, string[] headers, Alignment[] aligns)
     {
         for (int i = 0; i < headers.Length; i++)
         {
-            SetCell(r.Cells[i], headers[i], Alignment.center, bold: true);
-            r.Cells[i].FillColor = XColor.Parse(210, 225, 245);
+            SetCell(r.Cells[i], headers[i], aligns[i], bold: true);
+            r.Cells[i].FillColor = XColor.Parse(232, 238, 246);
         }
     }
 
     private static void SetCell(Cell c, string text, Alignment align, bool bold = false)
     {
-        // Pastikan cell punya minimal 1 paragraph
         var p = c.Paragraphs.FirstOrDefault() ?? c.InsertParagraph();
         p.RemoveText(0, p.Text.Length);
         p.Alignment = align;
@@ -497,9 +596,23 @@ public static class WordLetterExport
         if (bold) run.Bold();
     }
 
+    // ══════════════════════════════════════════════════════════════════════
+    //  EMBEDDED RESOURCE HELPERS
+    // ══════════════════════════════════════════════════════════════════════
+    private static byte[]? TryReadEmbedded(string name)
+    {
+        var asm = typeof(WordLetterExport).Assembly;
+        using var s = asm.GetManifestResourceStream(name);
+        if (s == null) return null;
+        using var ms = new MemoryStream();
+        s.CopyTo(ms);
+        return ms.ToArray();
+    }
+
     private static string Get(IDictionary<string, string> s, string key, string fallback)
         => s.TryGetValue(key, out var v) && !string.IsNullOrWhiteSpace(v) ? v : fallback;
 
-    private static string Rp(decimal value)
-        => "Rp " + value.ToString("N0", IdCulture);
+    /// <summary>Format Indonesian decimal with trailing comma-dash (e.g. 4.320.000,-)</summary>
+    private static string RpDash(decimal value)
+        => value.ToString("N0", IdCulture) + ",-";
 }

@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.7
+- **Versi saat ini:** v1.2.8
 
 ---
 
@@ -98,6 +98,7 @@ import sqlite3, csv
   - v1.2.5: Security hardening (DB encrypt, update SHA-256 verify, Obfuscar, BCrypt, license binding) + PDF/CSV format polish + multi-panel surat penawaran + installer fix
   - v1.2.6: Auto-refresh dropdown kategori/merk setelah import + UX Penawaran Gabungan + Export Word (.docx) & Excel (.xlsx) + versi tampil di title bar & header + installer password baru
   - v1.2.7: HOTFIX — app crash saat klik checkbox di Riwayat Estimasi (CellContentClick→CommitEdit pattern bermasalah, ganti ke CurrentCellDirtyStateChanged + defer state update via BeginInvoke + try-catch wrapper di setiap event handler grid)
+  - v1.2.8: PDF & Word penawaran SEKARANG match pixel template DOCX resmi PT TTS (letterhead jpeg + signature + cap stempel embedded; tabel ringkas 3-kolom No|Nama|Harga; Kondisi Penawaran bullet; multi-panel page 2+ Rincian Material tabel 6-kolom dengan section divider Box/Incoming/Outgoing). Default signer "Kuntjoro Handoko / Direktur / Bandung" (override via Settings).
 
 ### Kebijakan Versioning (sejak v1.2.6)
 

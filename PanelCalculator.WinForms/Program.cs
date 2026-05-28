@@ -241,9 +241,11 @@ static class Program
             )");
 
             // Default settings for formal letter export (INSERT OR IGNORE = no-op if already set)
-            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerName',    '',                datetime('now'))");
-            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerTitle',   'Marketing',       datetime('now'))");
-            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('OfferLocation','',                datetime('now'))");
+            // Default signer/lokasi match template DOCX referensi PT TTS (file 161 & 191).
+            // INSERT OR IGNORE: existing customer yang sudah customize tidak akan terganggu.
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerName',    'Kuntjoro Handoko', datetime('now'))");
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('SignerTitle',   'Direktur',         datetime('now'))");
+            TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('OfferLocation', 'Bandung',          datetime('now'))");
             TryExec("INSERT OR IGNORE INTO AppSettings (SettingKey, SettingValue, LastUpdated) VALUES ('CompanyName',  'PT. Tritunggal Swarna', datetime('now'))");
         }
         catch { /* non-fatal */ }

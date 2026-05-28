@@ -18,6 +18,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\logo.png" />
+    <!-- Letterhead assets extracted dari template DOCX official PT TTS.
+         Dipakai oleh PdfLetterExport + WordLetterExport untuk match
+         format penawaran resmi yang sudah dipakai PT TTS selama ini. -->
+    <EmbeddedResource Include="Assets\Letterhead\letterhead.jpg" />
+    <EmbeddedResource Include="Assets\Letterhead\signature.png" />
+    <EmbeddedResource Include="Assets\Letterhead\stamp.png" />
   </ItemGroup>
 
   <ItemGroup>
