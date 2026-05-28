@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.6
+- **Versi saat ini:** v1.2.7
 
 ---
 
@@ -97,6 +97,7 @@ import sqlite3, csv
   - v1.2.4: Koreksi harga katalog Himel & FORT ke harga list asli (tanpa diskon)
   - v1.2.5: Security hardening (DB encrypt, update SHA-256 verify, Obfuscar, BCrypt, license binding) + PDF/CSV format polish + multi-panel surat penawaran + installer fix
   - v1.2.6: Auto-refresh dropdown kategori/merk setelah import + UX Penawaran Gabungan + Export Word (.docx) & Excel (.xlsx) + versi tampil di title bar & header + installer password baru
+  - v1.2.7: HOTFIX — app crash saat klik checkbox di Riwayat Estimasi (CellContentClick→CommitEdit pattern bermasalah, ganti ke CurrentCellDirtyStateChanged + defer state update via BeginInvoke + try-catch wrapper di setiap event handler grid)
 
 ### Kebijakan Versioning (sejak v1.2.6)
 

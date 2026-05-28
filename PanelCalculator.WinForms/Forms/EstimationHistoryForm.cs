@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using PanelCalculator.Core.Models;
 using PanelCalculator.Core.Services;
 using PanelCalculator.Data.Repositories;
@@ -21,6 +23,29 @@ public class EstimationHistoryForm : Form
     private Button btnCombine = null!;
     private ToolTip _toolTip = null!;
     private bool _bulkToggling; // re-entrancy guard untuk header-click "Centang Semua"
+
+    /// <summary>
+    /// Append a grid event-handler error ke startup-crash.log supaya regresi
+    /// di event grid (yang dulu silent-crash di v1.2.6) bisa di-trace.
+    /// </summary>
+    private static void LogGridError(string source, Exception ex)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "PanelCalculator", "logs");
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, "startup-crash.log");
+            var msg =
+                $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] EstimationHistoryForm.{source}{Environment.NewLine}" +
+                $"  Exception : {ex.GetType().FullName}: {ex.Message}{Environment.NewLine}" +
+                $"  Stack     :{Environment.NewLine}{ex.StackTrace}{Environment.NewLine}" +
+                new string('-', 60) + Environment.NewLine;
+            File.AppendAllText(file, msg);
+        }
+        catch { /* logging itself failed — nothing more we can do */ }
+    }
 
     public EstimationHistoryForm(
         IEstimationRepository estimationRepo,
@@ -123,40 +148,78 @@ public class EstimationHistoryForm : Form
         dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColTotal",   HeaderText = "Total Harga",   FillWeight = 18, ReadOnly = true, DefaultCellStyle = { Alignment = DataGridViewContentAlignment.MiddleRight } });
         dgv.Columns.Add(new DataGridViewTextBoxColumn { Name = "ColId",      Visible = false, ReadOnly = true });
         dgv.CellDoubleClick += Dgv_CellDoubleClick;
-        // CellContentClick + CommitEdit -> CellValueChanged firing langsung
-        // sehingga tombol "Export PDF Penawaran Gabungan" enabled/disabled
-        // segera setelah user centang/uncentang.
-        dgv.CellContentClick += (s, e) =>
+
+        // ── Checkbox handling — DEFENSIVE PATTERN ────────────────────────
+        // Pre-v1.2.7 crash report: "ada error saat memilih checkbox aplikasi
+        // keluar sendiri." Root cause: CellContentClick + CommitEdit lalu
+        // mengubah HeaderText / DefaultCellStyle selama event chain belum
+        // selesai → WinForms grid invalidasi kolom yang cell-nya sedang
+        // commit → state inconsistent → silent crash di sebagian Windows.
+        //
+        // Fix berlapis tiga:
+        //   1. Ganti ke CurrentCellDirtyStateChanged (canonical pattern).
+        //   2. Defer semua state update via BeginInvoke supaya jalan setelah
+        //      grid selesai commit + paint.
+        //   3. Try-catch di setiap handler + log ke startup-crash.log
+        //      sehingga regresi berikutnya tidak silent.
+
+        dgv.CurrentCellDirtyStateChanged += (s, e) =>
         {
-            if (e.RowIndex >= 0 && dgv.Columns[e.ColumnIndex].Name == "ColPick")
-                dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            try
+            {
+                if (dgv.IsCurrentCellDirty && dgv.CurrentCell is DataGridViewCheckBoxCell)
+                    dgv.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+            catch (Exception ex) { LogGridError(nameof(dgv.CurrentCellDirtyStateChanged), ex); }
         };
+
         dgv.CellValueChanged += (s, e) =>
         {
-            if (e.RowIndex >= 0) UpdateRowHighlight(dgv.Rows[e.RowIndex]);
-            UpdateCombineButtonState();
+            // Defer state update — running it inline can re-enter the grid's
+            // commit/paint cycle and crash on some Windows builds.
+            int rowIdx = e.RowIndex;
+            if (rowIdx < 0) return;
+            BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (rowIdx < dgv.Rows.Count)
+                        UpdateRowHighlight(dgv.Rows[rowIdx]);
+                    UpdateCombineButtonState();
+                }
+                catch (Exception ex) { LogGridError(nameof(dgv.CellValueChanged), ex); }
+            }));
         };
-        // Row-click toggle: klik di mana saja pada baris (selain header) → toggle checkbox.
-        // Lebih natural daripada user harus presisi klik kotak checkbox kecil.
-        // Skip kolom Pilih sendiri (sudah ditangani CellContentClick) dan double-click
-        // (yang artinya buka detail estimasi via Dgv_CellDoubleClick).
+
+        // Row-click toggle: klik di mana saja di baris (selain kolom checkbox sendiri,
+        // sudah otomatis di-handle DataGridView) → toggle checkbox.
         dgv.CellClick += (s, e) =>
         {
-            if (e.RowIndex < 0 || _bulkToggling) return;
-            // Kalau user klik kolom Pilih, biarkan CellContentClick yang handle
-            if (dgv.Columns[e.ColumnIndex].Name == "ColPick") return;
-            var row = dgv.Rows[e.RowIndex];
-            if (row.IsNewRow) return;
-            var cell = row.Cells["ColPick"];
-            bool current = cell.Value is bool b && b;
-            cell.Value = !current;
-            // Tidak perlu CommitEdit di sini — assignment Value langsung mem-fire CellValueChanged.
+            try
+            {
+                if (e.RowIndex < 0 || _bulkToggling) return;
+                if (e.ColumnIndex < 0 || e.ColumnIndex >= dgv.Columns.Count) return;
+                if (dgv.Columns[e.ColumnIndex].Name == "ColPick") return; // checkbox column natively handles its click
+                var row = dgv.Rows[e.RowIndex];
+                if (row.IsNewRow) return;
+                var cell = row.Cells["ColPick"];
+                bool current = cell.Value is bool b && b;
+                cell.Value = !current;
+                // CellValueChanged fires via grid's normal binding update.
+            }
+            catch (Exception ex) { LogGridError(nameof(dgv.CellClick), ex); }
         };
-        // Header-click toggle: klik header "Pilih" → centang/batal-pilih semua baris yang sedang tampil.
+
+        // Header-click "select all" → centang/batal-pilih semua baris visible.
         dgv.ColumnHeaderMouseClick += (s, e) =>
         {
-            if (e.ColumnIndex < 0 || dgv.Columns[e.ColumnIndex].Name != "ColPick") return;
-            ToggleAllVisibleRows();
+            try
+            {
+                if (e.ColumnIndex < 0 || e.ColumnIndex >= dgv.Columns.Count) return;
+                if (dgv.Columns[e.ColumnIndex].Name != "ColPick") return;
+                ToggleAllVisibleRows();
+            }
+            catch (Exception ex) { LogGridError(nameof(dgv.ColumnHeaderMouseClick), ex); }
         };
 
         // Bottom buttons
@@ -249,22 +312,29 @@ public class EstimationHistoryForm : Form
     /// <summary>Beri highlight visual pada baris yang ter-centang agar mudah dilihat.</summary>
     private void UpdateRowHighlight(DataGridViewRow row)
     {
-        if (row.IsNewRow) return;
-        bool picked = row.Cells["ColPick"].Value is bool b && b;
-        // Brand500 dengan alpha rendah → jadi accent halus di atas Bg1 (sidebar bg)
-        if (picked)
+        try
         {
-            row.DefaultCellStyle.BackColor = AppTheme.Bg3;          // lebih terang dari Bg2 → kelihatan
-            row.DefaultCellStyle.ForeColor = AppTheme.Text1;
-            row.DefaultCellStyle.SelectionBackColor = AppTheme.Brand500;
+            if (row == null || row.IsNewRow) return;
+            if (row.Cells["ColPick"] is not DataGridViewCheckBoxCell pickCell) return;
+            bool picked = pickCell.Value is bool b && b;
+            if (picked)
+            {
+                row.DefaultCellStyle.BackColor          = AppTheme.Bg3;
+                row.DefaultCellStyle.ForeColor          = AppTheme.Text1;
+                row.DefaultCellStyle.SelectionBackColor = AppTheme.Brand500;
+            }
+            else
+            {
+                // Reset ke warna grid default secara EKSPLISIT.
+                // Sebelumnya pakai Color.Empty untuk "inherit" tapi pada
+                // beberapa Windows ini bikin repaint cycle yang bertabrakan
+                // dengan commit checkbox → app silent-crash.
+                row.DefaultCellStyle.BackColor          = AppTheme.Bg1;
+                row.DefaultCellStyle.ForeColor          = AppTheme.Text1;
+                row.DefaultCellStyle.SelectionBackColor = AppTheme.Brand400;
+            }
         }
-        else
-        {
-            // Reset ke default — biarkan AlternatingRowsDefaultCellStyle ambil alih
-            row.DefaultCellStyle.BackColor = Color.Empty;
-            row.DefaultCellStyle.ForeColor = Color.Empty;
-            row.DefaultCellStyle.SelectionBackColor = Color.Empty;
-        }
+        catch (Exception ex) { LogGridError(nameof(UpdateRowHighlight), ex); }
     }
 
     private async Task LoadDataAsync()
