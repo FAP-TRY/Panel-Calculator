@@ -58,12 +58,27 @@ public class LicenseServiceTests
         var (key, pub) = MakeKeypair();
         var license = IssueLicense(key, SampleFingerprint, "PT Sample");
 
-        // Flip one character near the end (where signature bytes live).
-        // We have to flip to a different VALID Base32 char or we'd just hit Malformed.
+        // Flip three characters near the end (where signature bytes live).
+        // We must flip to a different VALID Base32 char or we'd hit Malformed.
+        //
+        // Flipping ONLY the last char is flaky: the Crockford-Base32 encoder
+        // emits 146 chars for a 91-byte payload (1+8+8+1+9+64), and the final
+        // char's bottom 2 bits are padding (`FromBase32` discards trailing
+        // < 8 bits). An 'A'↔'B' flip differs only in bit 0 — when the original
+        // last char is '8' (the only encoder-emitted char that shares top-3
+        // bits 010 with 'A'), the decoded signature byte is unchanged and the
+        // signature still verifies as Valid (~1/8 of runs).
+        //
+        // Positions length-3 and length-5 are entirely inside data bits of
+        // byte[89]/byte[88]/byte[87], so flipping there ALWAYS perturbs at
+        // least one signature byte regardless of what position length-1 does.
         var stripped = LicensePayload.StripFormatting(license);
         var sb = new StringBuilder(stripped);
-        char last = sb[sb.Length - 1];
-        sb[sb.Length - 1] = last == 'A' ? 'B' : 'A';
+        foreach (var pos in new[] { sb.Length - 1, sb.Length - 3, sb.Length - 5 })
+        {
+            char c = sb[pos];
+            sb[pos] = c == 'A' ? 'B' : 'A';
+        }
         var tampered = sb.ToString();
 
         var result = LicenseService.ValidateLicenseWithKey(tampered, SampleFingerprint, pub);
