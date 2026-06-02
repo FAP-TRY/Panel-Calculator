@@ -1,0 +1,29 @@
+﻿{
+  "samples": {
+    "sample-01-single-simple": {
+      "pdf-sha256": "6821299979eca81ffdd268086d257595a064eff05b99dcbf18eff78bec32a1fe",
+      "docx-sha256": "1050873187ad765bb2206a681ab1e71fe7af98cabb61bb6c1bf1405c7ef82d4d",
+      "xlsx-sha256": "a1b1d5fbee27108c22b512642dba3294fe8d493f614da16a883f97a19356f56a"
+    },
+    "sample-02-multi-panel-medium": {
+      "pdf-sha256": "b530abe181d8a3fb170f3a2926505a76a564c9b305fcbb56cb3ace5f37533ae7",
+      "docx-sha256": "e7b1daba69b99a42b199a0f8f13809388a93c290366736e4a09bbad8f5a549e3",
+      "xlsx-sha256": "470d16bbfdab30227cbcc47ed7e281f1e8e7c5885b92645e64e868ec5a91fc79"
+    },
+    "sample-03-single-complex-discount": {
+      "pdf-sha256": "ba1d66213e52eef90bc96f51e1c36bfe71ddc79e4c1f56ce48ae079f6b4fc6dd",
+      "docx-sha256": "a368fde81be0b299b6a546cb88f0487970c7394ca001c59ff435d8975cd7f5f4",
+      "xlsx-sha256": "820af36192a54b87eeafe56ca6d3f84f94a8b3a65b238ad837e89698a7f35e7f"
+    },
+    "sample-04-multi-panel-large-sections": {
+      "pdf-sha256": "a612bd18a31f2d8acd6ba350c367124abdd60354767e8e38858096d8674d475b",
+      "docx-sha256": "adbe023516a7ca4d57115429a9dce64c96fed4eeb40c5b83c0ad14966f5bd5a2",
+      "xlsx-sha256": "a10c47384abc65d4518f66bbc6cc9f6997ffa3568fb41722163d5a4aa9ff7ab2"
+    },
+    "sample-05-single-zero-shipping": {
+      "pdf-sha256": "4e56cc34752aade5a259dede6a90ebb64c4ab92b9a93da3cb51d8138ce0bc552",
+      "docx-sha256": "6e318b41c80f7ee375cefc6674efb5d1d231b8690540a9927595c1d5bc82d111",
+      "xlsx-sha256": "511464fd0654cc4b35bdf01a75905fb27e5f432760925ec1e3f631924eafc8d7"
+    }
+  }
+}

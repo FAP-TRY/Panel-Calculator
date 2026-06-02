@@ -81,6 +81,17 @@ static class Program
     {
         ApplicationConfiguration.Initialize();
 
+        // ── Brand context wiring ────────────────────────────────────────
+        // Wired here — paling awal di RunApp — so every downstream layer
+        // (export services, ShellForm title bar, UpdateService) can read
+        // tenant identity through RabKit.Branding.BrandContext.Current
+        // instead of via inline hardcoded strings. Week 1 only WIRES the
+        // context; the string-replacement wave that consumes it lands in
+        // Week 2 (see docs/rabkit-04-execution-plan.md).
+        RabKit.Branding.BrandContext.Initialize(
+            new PanelBranding.PanelBrandConfig(),
+            new PanelBranding.PanelIndustryProfile());
+
         // ── Initialize SQLitePCLRaw with the SQLCipher provider BEFORE any
         // SqliteConnection is opened. The bundle has a module initializer
         // that does this automatically when the assembly is loaded, but we

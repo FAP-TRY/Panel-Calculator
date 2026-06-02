@@ -36,6 +36,8 @@
   <ItemGroup>
     <ProjectReference Include="..\PanelCalculator.Core\PanelCalculator.Core.csproj" />
     <ProjectReference Include="..\PanelCalculator.Data\PanelCalculator.Data.csproj" />
+    <ProjectReference Include="..\RabKit.Branding\RabKit.Branding.csproj" />
+    <ProjectReference Include="..\Panel.Branding\Panel.Branding.csproj" />
   </ItemGroup>
 
 </Project>

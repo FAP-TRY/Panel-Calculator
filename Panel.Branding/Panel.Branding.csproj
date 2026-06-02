@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Panel.Branding — vertical pack for the existing PT TTS panel-listrik
+    install. Holds every hardcoded TTS value that used to live scattered
+    across the source tree (signer, NPWP, GitHub coords, license public
+    key, machine-key pepper) plus the panel-industry section vocab + the
+    MCB/MCCB family heuristic. Branding assets (letterhead, signature,
+    stamp, logo) are embedded resources of THIS DLL — the engine reads
+    them through IBrandConfig byte accessors, no GetManifestResourceStream
+    of the WinForms assembly.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Release builds: no PDB shipped. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\logo.png" />
+    <EmbeddedResource Include="Assets\letterhead.jpg" />
+    <EmbeddedResource Include="Assets\signature.png" />
+    <EmbeddedResource Include="Assets\stamp.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RabKit.Branding\RabKit.Branding.csproj" />
+  </ItemGroup>
+
+</Project>

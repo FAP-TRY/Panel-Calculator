@@ -36,6 +36,12 @@
          (services di WinForms project). Tests project sekarang net8.0-windows
          agar cross-target consistent. -->
     <ProjectReference Include="..\PanelCalculator.WinForms\PanelCalculator.WinForms.csproj" />
+    <!-- Branding contracts + Panel pack — golden master tests assert that
+         BrandContext.Current returns PT TTS values, and that the WinForms
+         BrandContext.Initialize wiring lines up with what the export
+         services expect. -->
+    <ProjectReference Include="..\RabKit.Branding\RabKit.Branding.csproj" />
+    <ProjectReference Include="..\Panel.Branding\Panel.Branding.csproj" />
   </ItemGroup>
 
 </Project>
