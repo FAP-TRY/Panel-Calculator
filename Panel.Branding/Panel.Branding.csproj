@@ -10,8 +10,14 @@
     them through IBrandConfig byte accessors, no GetManifestResourceStream
     of the WinForms assembly.
   -->
+  <!--
+    Target net8.0 (NOT net8.0-windows): this pack only ships POCO config
+    values + embedded image bytes — no Windows-specific types. Matches
+    RabKit.Branding's TFM so PanelCalculator.Data (cross-platform) can
+    depend on us for the machine-key pepper without dragging in WinForms.
+  -->
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

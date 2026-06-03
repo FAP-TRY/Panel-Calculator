@@ -4,6 +4,7 @@ using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Theme;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -11,7 +12,7 @@ namespace PanelCalculator.WinForms.Forms;
 /// Modal shown at startup when the app has no valid license stored in
 /// AppSettings. Walks the user through:
 ///   1. Reading their hardware fingerprint (auto-copied to clipboard on click)
-///   2. Contacting PT TTS via WhatsApp (deep-link) to receive a license
+///   2. Contacting brand support via WhatsApp (deep-link) to receive a license
 ///   3. Pasting the license string back into the textbox
 ///   4. Activating — on success the license is persisted in AppSettings.
 ///
@@ -21,8 +22,12 @@ namespace PanelCalculator.WinForms.Forms;
 public class ActivationForm : Form
 {
     /// <summary>Optional support phone number shown in the WhatsApp deep-link.
-    /// Defaults to a placeholder — PT TTS should update before public release.</summary>
-    public string SupportWhatsAppNumber { get; set; } = "628XXXXXXXXXX";
+    /// Defaults to <see cref="IBrandConfig.SupportWhatsAppNumber"/> or
+    /// the visible placeholder when the brand pack has no public WA channel.</summary>
+    public string SupportWhatsAppNumber { get; set; }
+        = string.IsNullOrWhiteSpace(BrandContext.Current.SupportWhatsAppNumber)
+            ? "628XXXXXXXXXX"
+            : BrandContext.Current.SupportWhatsAppNumber;
 
     private readonly PanelCalculatorContext _context;
     private TextBox _txtFingerprint = null!;
@@ -44,7 +49,7 @@ public class ActivationForm : Form
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
-        Text                = "Aktivasi Kalkulator Panel";
+        Text                = $"Aktivasi {BrandContext.Current.AppDisplayName}";
         Size                = new Size(560, 600);
         StartPosition       = FormStartPosition.CenterScreen;
         FormBorderStyle     = FormBorderStyle.FixedDialog;
@@ -79,7 +84,7 @@ public class ActivationForm : Form
         lblStep1.Location = new Point(margin, y); y += 18;
 
         var lblStep1Body = AppTheme.MakeLabel(
-            "Salin kode di bawah ini, lalu kirim ke PT Tritunggal Swarna via WhatsApp.",
+            $"Salin kode di bawah ini, lalu kirim ke {BrandContext.Current.CompanyName} via WhatsApp.",
             AppTheme.FontSmall, AppTheme.Text2);
         lblStep1Body.Location = new Point(margin, y);
         lblStep1Body.AutoSize = false;
@@ -114,7 +119,7 @@ public class ActivationForm : Form
 
         var btnWa = new Button
         {
-            Text     = "💬 Hubungi PT TTS via WhatsApp",
+            Text     = $"💬 Hubungi {BrandContext.Current.CompanyShortName} via WhatsApp",
             Location = new Point(margin, y),
             Width    = width,
             Height   = 36,
@@ -132,7 +137,7 @@ public class ActivationForm : Form
         lblStep2.Location = new Point(margin, y); y += 18;
 
         var lblStep2Body = AppTheme.MakeLabel(
-            "PT TTS akan mengirim kode aktivasi (panjang ~150 karakter). Tempelkan di sini:",
+            $"{BrandContext.Current.CompanyShortName} akan mengirim kode aktivasi (panjang ~150 karakter). Tempelkan di sini:",
             AppTheme.FontSmall, AppTheme.Text2);
         lblStep2Body.Location = new Point(margin, y);
         lblStep2Body.AutoSize = false;
@@ -214,7 +219,7 @@ public class ActivationForm : Form
         try
         {
             var msg = Uri.EscapeDataString(
-                "Halo PT Tritunggal Swarna, saya ingin aktivasi Kalkulator Panel.\n" +
+                $"Halo {BrandContext.Current.CompanyName}, saya ingin aktivasi {BrandContext.Current.AppDisplayName}.\n" +
                 "Hardware ID komputer saya: " + _fingerprintDisplay);
             var url = $"https://wa.me/{SupportWhatsAppNumber}?text={msg}";
 
@@ -256,7 +261,7 @@ public class ActivationForm : Form
             DialogResult = DialogResult.OK;
 
             MessageBox.Show(
-                $"Aktivasi berhasil!\n\nLisensi atas nama: {result.CustomerName}\nTerima kasih telah menggunakan Kalkulator Panel TTS.",
+                $"Aktivasi berhasil!\n\nLisensi atas nama: {result.CustomerName}\nTerima kasih telah menggunakan {BrandContext.Current.AppDisplayName}.",
                 "Aktivasi Berhasil",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
 
@@ -277,7 +282,7 @@ public class ActivationForm : Form
         LicenseValidationStatus.InvalidSignature =>
             "Kode aktivasi tidak valid (tanda tangan salah). Pastikan tidak ada karakter yang tertukar.",
         LicenseValidationStatus.WrongHardware =>
-            "Kode aktivasi ini diterbitkan untuk komputer lain. Hubungi PT TTS untuk reaktivasi.",
+            $"Kode aktivasi ini diterbitkan untuk komputer lain. Hubungi {BrandContext.Current.CompanyShortName} untuk reaktivasi.",
         LicenseValidationStatus.Malformed =>
             "Format kode aktivasi tidak dikenali. Pastikan Anda menempel seluruh teks tanpa terpotong.\n(" + r.Reason + ")",
         LicenseValidationStatus.Expired =>

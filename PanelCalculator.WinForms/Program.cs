@@ -8,6 +8,7 @@ using PanelCalculator.Data.Repositories;
 using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Forms;
 using PanelCalculator.WinForms.Services;
+using RabKit.Branding;
 using System.Reflection;
 
 namespace PanelCalculator.WinForms;
@@ -40,12 +41,18 @@ static class Program
             CrashLog("Main.Catch", ex);
             try
             {
+                var brandFolder = BrandContext.IsInitialized
+                    ? BrandContext.Current.AppDataFolderName
+                    : "PanelCalculator";
+                var appTitle = BrandContext.IsInitialized
+                    ? BrandContext.Current.AppDisplayName
+                    : "Kalkulator Panel";
                 MessageBox.Show(
                     "Aplikasi tidak bisa dijalankan.\n\n" +
                     $"Detail: {ex.GetType().Name}: {ex.Message}\n\n" +
-                    $"Log lengkap: %AppData%\\PanelCalculator\\logs\\startup-crash.log\n\n" +
+                    $"Log lengkap: %AppData%\\{brandFolder}\\logs\\startup-crash.log\n\n" +
                     "Mohon kirim file log ke support.",
-                    "Kalkulator Panel — Crash",
+                    $"{appTitle} — Crash",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -58,9 +65,16 @@ static class Program
     {
         try
         {
+            // BrandContext might not be initialized yet (e.g. crash inside
+            // BrandContext.Initialize itself). Fall back to a sensible
+            // default folder name in that case so a crash log still
+            // appears somewhere predictable.
+            var brandFolder = BrandContext.IsInitialized
+                ? BrandContext.Current.AppDataFolderName
+                : "PanelCalculator";
             var dir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "PanelCalculator", "logs");
+                brandFolder, "logs");
             Directory.CreateDirectory(dir);
             var file = Path.Combine(dir, "startup-crash.log");
             var msg =
@@ -116,7 +130,7 @@ static class Program
                 $"Detail: {ex.Message}\n\n" +
                 $"Backup database lama tersimpan di:\n{Path.GetDirectoryName(dbPath)}\n\n" +
                 "Aplikasi tidak bisa lanjut. Mohon hubungi support dan jangan hapus folder ini.",
-                "Kalkulator Panel — Migrasi Gagal",
+                $"{BrandContext.Current.AppDisplayName} — Migrasi Gagal",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -299,12 +313,15 @@ static class Program
     /// <summary>
     /// Canonical location of the application database. Centralized so
     /// the migrator and the DI container resolve the same path.
+    /// Folder name is brand-pack-controlled — different editions on the
+    /// same machine therefore live in different AppData folders and
+    /// cannot collide.
     /// </summary>
     private static string GetDbPath()
     {
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "PanelCalculator",
+            BrandContext.Current.AppDataFolderName,
             "PanelCalculator.db"
         );
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);

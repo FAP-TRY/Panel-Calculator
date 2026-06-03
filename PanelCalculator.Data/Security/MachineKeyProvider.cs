@@ -4,6 +4,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
+using RabKit.Branding;
 
 namespace PanelCalculator.Data.Security;
 
@@ -48,12 +49,20 @@ public static class MachineKeyProvider
                 "MachineGuid",
                 "GUID-MISSING");
 
-            var pepper = GetPepper();
+            // Pepper bytes sourced from brand pack — XOR-encoded constant
+            // lives in Panel.Branding (cleartext "TTS-PanelCalc-pepper-2026-v1"
+            // for the PT TTS install). Engine just consumes the decoded bytes.
+            // KRITIS: app tag + pepper MUST be byte-identical with the legacy
+            // hardcoded values for every existing customer DB — see
+            // docs/rabkit-04-execution-plan.md Risk #1 and BrandContextWiringTest
+            // which assert this.
+            var pepperBytes = BrandContext.Current.MachineKeyPepperBytes;
+            var pepper = DecodeXorPepper(pepperBytes);
 
             using var sha = SHA256.Create();
             var material = string.Join("|", new[]
             {
-                "PanelCalculator.v1",
+                BrandContext.Current.LegacyMachineKeyAppTag,
                 board.Trim(),
                 cpu.Trim(),
                 machineGuid.Trim(),
@@ -165,27 +174,25 @@ public static class MachineKeyProvider
     }
 
     /// <summary>
-    /// Returns a constant pepper string. The bytes are XOR-obfuscated to keep
-    /// the literal out of the compiled string-table; this is a *tiny* speed
-    /// bump for casual reverse-engineering. Proper obfuscation (Obfuscar
-    /// HideStrings or string-encryption tool) is tracked as a separate item.
+    /// Decode XOR-obfuscated pepper bytes (mask 0x5A) into the cleartext
+    /// string mixed into <see cref="GetKey"/>'s SHA-256 material. Identical
+    /// algorithm with the legacy inline <c>GetPepper()</c> — bytes-in,
+    /// chars-out, one byte = one ASCII codepoint.
+    ///
+    /// <para>
+    /// The bytes themselves now live in the brand pack
+    /// (<see cref="IBrandConfig.MachineKeyPepperBytes"/>) so multi-edition
+    /// builds can ship distinct peppers. For the PT TTS install the brand
+    /// pack returns the original bytes verbatim, so the resulting SQLCipher
+    /// key on every existing customer machine stays unchanged.
+    /// </para>
     /// </summary>
-    private static string GetPepper()
+    private static string DecodeXorPepper(byte[] obfuscated)
     {
-        // XOR mask — single byte 0x5A applied to each pepper byte.
-        // Original cleartext: "TTS-PanelCalc-pepper-2026-v1" (28 chars)
-        byte[] obf = new byte[]
-        {
-            0x0E, 0x0E, 0x09, 0x77, 0x0A, 0x3B, 0x34, 0x3F,
-            0x36, 0x19, 0x3B, 0x36, 0x39, 0x77, 0x2A, 0x3F,
-            0x2A, 0x2A, 0x3F, 0x28, 0x77, 0x68, 0x6A, 0x68,
-            0x6C, 0x77, 0x2C, 0x6B
-        };
-        var sb = new StringBuilder(obf.Length);
-        for (int i = 0; i < obf.Length; i++)
-        {
-            sb.Append((char)(obf[i] ^ 0x5A));
-        }
+        const byte XorMask = 0x5A;
+        var sb = new StringBuilder(obfuscated.Length);
+        for (int i = 0; i < obfuscated.Length; i++)
+            sb.Append((char)(obfuscated[i] ^ XorMask));
         return sb.ToString();
     }
 }

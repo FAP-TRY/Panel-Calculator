@@ -5,6 +5,7 @@ using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
 using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -101,7 +102,7 @@ public partial class MainForm : Form
         ClientSize          = new Size(1280, 780);
         MinimumSize         = new Size(1100, 680);
         Name            = "MainForm";
-        Text            = "Kalkulator Panel Tritunggal Swarna";
+        Text            = BrandContext.Current.AppDisplayName;
         StartPosition   = FormStartPosition.CenterScreen;
         BackColor       = AppTheme.Background;
         Load           += MainForm_Load;
@@ -141,16 +142,16 @@ public partial class MainForm : Form
             SizeMode = PictureBoxSizeMode.Zoom,
             BackColor = Color.Transparent,
         };
-        using (var stream = typeof(MainForm).Assembly
-                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
+        var logoBytes = BrandContext.Current.GetLogoBytes();
+        if (logoBytes != null)
         {
-            if (stream != null)
-                pbToolLogo.Image = Image.FromStream(stream);
+            using var stream = new MemoryStream(logoBytes);
+            pbToolLogo.Image = Image.FromStream(stream);
         }
 
         var lblCompany = new Label
         {
-            Text      = "TRITUNGGAL SWARNA",
+            Text      = StripPrefixPt(BrandContext.Current.CompanyName).ToUpperInvariant(),
             Font      = new Font("Segoe UI", 11f, FontStyle.Bold),
             ForeColor = Color.White,
             AutoSize  = true,
@@ -598,7 +599,7 @@ public partial class MainForm : Form
         txtClientName   = AddInfoField(pnlSummary, ref y, "Nama Klien *",     "Contoh: Budi Santoso");
         txtCompany      = AddInfoField(pnlSummary, ref y, "Perusahaan",        "Nama perusahaan / instansi");
         txtContactPhone = AddInfoField(pnlSummary, ref y, "No Kontak",         "08xx-xxxx-xxxx");
-        txtProjectName  = AddInfoField(pnlSummary, ref y, "Perihal",            "Panel MDP 3-Phase 400A");
+        txtProjectName  = AddInfoField(pnlSummary, ref y, "Perihal",            BrandContext.CurrentIndustry.PlaceholderPerihal);
         txtAddress      = AddInfoField(pnlSummary, ref y, "Alamat",            "Alamat pengiriman");
 
         // Tanggal Pembuatan
@@ -1425,8 +1426,16 @@ public partial class MainForm : Form
         try
         {
         var today     = DateTime.Now;
-        var todayStr  = today.ToString("yyyyMMdd");
-        var prefix    = $"EST-{todayStr}-";
+        var pattern   = BrandContext.Current.EstimationNumberPattern;   // mis. "EST-{0:yyyyMMdd}-{1:D3}"
+
+        // Compute the prefix dynamically by formatting with seq=0 then dropping
+        // the trailing sequence digits. Keeps the pattern editable per brand
+        // without hard-coding "EST-" or "YYYYMMDD-" boundaries here.
+        var zeroNumber  = string.Format(pattern, today, 0);              // "EST-20260602-000"
+        var zeroSuffix  = string.Format("{0:D3}", 0);                    // "000"
+        var prefix      = zeroNumber.EndsWith(zeroSuffix)
+            ? zeroNumber.Substring(0, zeroNumber.Length - zeroSuffix.Length)
+            : zeroNumber;                                                // "EST-20260602-"
 
         // Use UTC boundaries so the date range matches CreatedDate (stored in UTC)
         var utcStart  = today.Date.ToUniversalTime();
@@ -1448,7 +1457,7 @@ public partial class MainForm : Form
         int seq = maxSeq + 1;
         while (true)
         {
-            estNumber = $"{prefix}{seq:D3}";
+            estNumber = string.Format(pattern, today, seq);
             bool taken = _context.Estimations.Any(x => x.EstimationNumber == estNumber);
             if (!taken) break;
             seq++;
@@ -2050,6 +2059,20 @@ public partial class MainForm : Form
 
     private static string FormatRupiah(decimal value) =>
         "Rp " + value.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("id-ID"));
+
+    /// <summary>
+    /// Hilangkan prefix "PT." / "PT " dari company name supaya banner top bar
+    /// kompak ("TRITUNGGAL SWARNA" alih-alih "PT. TRITUNGGAL SWARNA").
+    /// </summary>
+    private static string StripPrefixPt(string name)
+    {
+        var n = (name ?? "").Trim();
+        if (n.StartsWith("PT.", StringComparison.OrdinalIgnoreCase))
+            return n.Substring(3).TrimStart();
+        if (n.StartsWith("PT ", StringComparison.OrdinalIgnoreCase))
+            return n.Substring(3).TrimStart();
+        return n;
+    }
 }
 
 // ════════════════════════════════════════════════════════════════════════

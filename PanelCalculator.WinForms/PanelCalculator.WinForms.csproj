@@ -16,15 +16,13 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Assets\logo.png" />
-    <!-- Letterhead assets extracted dari template DOCX official PT TTS.
-         Dipakai oleh PdfLetterExport + WordLetterExport untuk match
-         format penawaran resmi yang sudah dipakai PT TTS selama ini. -->
-    <EmbeddedResource Include="Assets\Letterhead\letterhead.jpg" />
-    <EmbeddedResource Include="Assets\Letterhead\signature.png" />
-    <EmbeddedResource Include="Assets\Letterhead\stamp.png" />
-  </ItemGroup>
+  <!--
+    W2.6: Embedded resource untuk branding (logo, letterhead, signature,
+    stamp) sudah dipindah ke Panel.Branding/Assets/. Export services dan
+    UI forms sekarang baca via BrandContext.Current.GetLogoBytes() /
+    .GetLetterheadBytes() / .GetSignatureBytes() / .GetStampBytes().
+    Tidak ada lagi <EmbeddedResource> branding di project WinForms.
+  -->
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />

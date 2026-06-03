@@ -40,7 +40,9 @@ public class CombineEstimationsDialog : Form
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
-        Text            = "Surat Penawaran Multi-Panel";
+        // Generic "Gabungan" supaya tidak panel-specific (industri lain
+        // mungkin pakai unit "Trailer", "Zona MEP", "Tower BTS" dst).
+        Text            = "Surat Penawaran Gabungan";
         Size            = new Size(640, 580);
         StartPosition   = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;

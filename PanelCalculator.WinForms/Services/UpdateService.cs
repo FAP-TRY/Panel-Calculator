@@ -2,38 +2,44 @@ using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using PanelCalculator.Data.Security;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Services;
 
 /// <summary>
 /// Checks for application updates on GitHub Releases and applies them via a
-/// self-replace PowerShell script.  The local database at %AppData%\PanelCalculator\
-/// is never touched — only the application EXE is replaced.
+/// self-replace PowerShell script.  The local database at
+/// <c>%AppData%\{BrandContext.AppDataFolderName}\</c> is never touched —
+/// only the application EXE is replaced.
 ///
 /// Security model (added 2026-05-16):
 ///   1. Each release MUST publish a manifest asset named
-///      "PanelCalculator.exe.sha256" alongside the EXE.
+///      "{AssetName}.sha256" alongside the EXE.
 ///   2. After the EXE is downloaded, the client also fetches the manifest,
 ///      recomputes SHA-256 locally, and refuses to install if the hashes
 ///      do not match exactly.
 ///   3. Only release-asset hosts owned by GitHub itself are accepted.
 ///   4. Every check / verify / fail is appended to
-///      %AppData%\PanelCalculator\logs\update-yyyy-MM-dd.log
+///      %AppData%\{BrandContext.AppDataFolderName}\logs\update-yyyy-MM-dd.log
 /// </summary>
 public static class UpdateService
 {
-    // ── Version — bump this on every release ─────────────────────────────
-    public const string AppVersion = "1.2.9";
+    // ── Version — sourced from brand pack (see Panel.Branding) ───────────
+    // Changed from `const` to static property in v1.3.0-refactor so that
+    // multi-edition builds (TTS Custom, RAB Cepat Generic, future brands)
+    // can each ship their own version cadence without forking this file.
+    // All call sites use interpolation, so they pick up the property fine.
+    public static string AppVersion => BrandContext.Current.AppVersion;
 
-    // ── GitHub configuration ──────────────────────────────────────────────
-    private const string Owner    = "FAP-TRY";
-    private const string Repo     = "Panel-Calculator";
-    private const string ApiUrl   = $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
+    // ── GitHub configuration (sourced from brand pack) ───────────────────
+    private static string Owner    => BrandContext.Current.UpdateGitHubOwner;
+    private static string Repo     => BrandContext.Current.UpdateGitHubRepo;
+    private static string ApiUrl   => $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
 
     // Name of the asset file attached to each GitHub release.
     // Must match what is uploaded when creating the release.
-    private const string AssetName         = "PanelCalculator.exe";
-    private const string ManifestAssetName = "PanelCalculator.exe.sha256";
+    private static string AssetName         => BrandContext.Current.UpdateAssetName;
+    private static string ManifestAssetName => $"{AssetName}.sha256";
 
     // ── Public record ─────────────────────────────────────────────────────
     public sealed record ReleaseInfo(
@@ -132,10 +138,10 @@ public static class UpdateService
 
         if (string.IsNullOrWhiteSpace(info.ManifestUrl))
         {
-            log("ABORT: release has no SHA-256 manifest asset (PanelCalculator.exe.sha256).");
+            log($"ABORT: release has no SHA-256 manifest asset ({ManifestAssetName}).");
             throw new UpdateVerificationException(
                 "Rilis ini tidak menyertakan file verifikasi keamanan " +
-                "(PanelCalculator.exe.sha256). Update dibatalkan. Hubungi support.");
+                $"({ManifestAssetName}). Update dibatalkan. Hubungi support.");
         }
 
         if (!Uri.TryCreate(info.ManifestUrl, UriKind.Absolute, out var manifestUri) ||
@@ -373,7 +379,7 @@ try {
 
     /// <summary>
     /// Returns an action that appends one line to today's update log,
-    /// located at %AppData%\PanelCalculator\logs\update-yyyy-MM-dd.log.
+    /// located at %AppData%\{BrandContext.AppDataFolderName}\logs\update-yyyy-MM-dd.log.
     /// All logging failures are swallowed (logging must never break update).
     /// </summary>
     private static Action<string> OpenUpdateLog()
@@ -382,7 +388,7 @@ try {
         {
             var logDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "PanelCalculator",
+                BrandContext.Current.AppDataFolderName,
                 "logs");
             Directory.CreateDirectory(logDir);
             var logPath = Path.Combine(logDir, $"update-{DateTime.Now:yyyy-MM-dd}.log");

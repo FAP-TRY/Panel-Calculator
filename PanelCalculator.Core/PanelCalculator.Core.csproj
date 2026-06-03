@@ -20,6 +20,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\RabKit.Branding\RabKit.Branding.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Expose internals (e.g. PasswordHasher.LegacySha256, LicensePayload) to the test project. -->
     <InternalsVisibleTo Include="PanelCalculator.Tests" />
     <!-- The license generator CLI re-uses LicensePayload.BuildSignablePayload / Encode

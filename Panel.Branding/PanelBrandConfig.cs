@@ -29,6 +29,14 @@ public sealed class PanelBrandConfig : IBrandConfig
     public string CompanyEmail      => "info@tritunggalswarna.co.id";
     public string CompanyWebsite    => "www.tritunggalswarna.co.id";
 
+    /// <summary>
+    /// Empty string sampai PT TTS confirm nomor WhatsApp resmi mereka.
+    /// Saat kosong, ActivationForm tetap render tombol "Hubungi WA"
+    /// dengan placeholder "628XXXXXXXXXX" — non-functional, customer dapat
+    /// kontak via email atau telp sementara.
+    /// </summary>
+    public string SupportWhatsAppNumber => "";
+
     // ── Default signer ──────────────────────────────────────────────────
 
     public string DefaultSignerName    => "Kuntjoro Handoko";

@@ -1,6 +1,6 @@
 using PanelCalculator.Core.Services;
+using RabKit.Branding;
 using System.Globalization;
-using System.Reflection;
 using Xceed.Document.NET;
 using Xceed.Words.NET;
 // Alias untuk resolve namespace clash:
@@ -83,9 +83,9 @@ public static class WordLetterExport
         using var doc = DocX.Create(outputPath);
         SetupPage(doc);
 
-        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
-        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
-        var offerLocation = Get(settings, "OfferLocation", "Bandung");
+        var signerName    = Get(settings, "SignerName",    BrandContext.Current.DefaultSignerName);
+        var signerTitle   = Get(settings, "SignerTitle",   BrandContext.Current.DefaultSignerTitle);
+        var offerLocation = Get(settings, "OfferLocation", BrandContext.Current.DefaultOfferLocation);
 
         AddLetterheadHeader(doc, settings);
 
@@ -147,9 +147,9 @@ public static class WordLetterExport
         using var doc = DocX.Create(outputPath);
         SetupPage(doc);
 
-        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
-        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
-        var offerLocation = Get(settings, "OfferLocation", "Bandung");
+        var signerName    = Get(settings, "SignerName",    BrandContext.Current.DefaultSignerName);
+        var signerTitle   = Get(settings, "SignerTitle",   BrandContext.Current.DefaultSignerTitle);
+        var offerLocation = Get(settings, "OfferLocation", BrandContext.Current.DefaultOfferLocation);
 
         AddLetterheadHeader(doc, settings);
 
@@ -242,8 +242,8 @@ public static class WordLetterExport
             {
                 imgBytes = File.ReadAllBytes(sp);
             }
-            // 2. Embedded resource
-            imgBytes ??= TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.letterhead.jpg");
+            // 2. Brand-pack asset (sumber: Panel.Branding.dll embedded resource)
+            imgBytes ??= BrandContext.Current.GetLetterheadBytes();
             if (imgBytes == null) return;
 
             doc.AddHeaders();
@@ -403,7 +403,8 @@ public static class WordLetterExport
     private static void WriteKondisiPenawaran(DocX doc, decimal taxPercent,
         string offerLocation, bool isSingle)
     {
-        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var defaultCity = BrandContext.Current.DefaultOfferLocation;
+        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : defaultCity;
         doc.InsertParagraph("Kondisi Penawaran :").Bold().FontSize(10).SpacingBefore(4).SpacingAfter(4);
 
         var conds = new List<string>();
@@ -411,7 +412,8 @@ public static class WordLetterExport
             conds.Add($"Harga belum termasuk PPN {taxPercent:0.##}% (menyesuaikan dengan peraturan pemerintah)");
         else
             conds.Add("Harga belum termasuk PPN (menyesuaikan dengan peraturan pemerintah)");
-        conds.Add($"Harga loco {(string.Equals(city, "Bandung", StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
+        // "Harga loco Pabrik" trigger ketika city == default brand city.
+        conds.Add($"Harga loco {(string.Equals(city, defaultCity, StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
         if (!isSingle)
             conds.Add("DP 30% saat PO kami terima dan pelunasan 70% sebelum barang dikirim");
         conds.Add("Harga tidak terikat dan dapat berubah sewaktu-waktu");
@@ -435,7 +437,7 @@ public static class WordLetterExport
     private static void WriteSignatureBlock(DocX doc, string offerLocation,
         DateTime createdDate, string signerName, string signerTitle)
     {
-        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : BrandContext.Current.DefaultOfferLocation;
         var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
 
         // 2-col table; kolom kanan lebih sempit + all content right-aligned.
@@ -450,14 +452,14 @@ public static class WordLetterExport
         firstPara.Alignment = Alignment.right;
         firstPara.Append($"{city}, {dateStr}").FontSize(10);
 
-        var ptPara = rightCell.InsertParagraph("PT. Tritunggal Swarna").Bold().FontSize(10);
+        var ptPara = rightCell.InsertParagraph(BrandContext.Current.CompanyName).Bold().FontSize(10);
         ptPara.Alignment = Alignment.right;
 
         // ── Signature + stamp image overlay ──
         try
         {
-            var sigBytes   = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.signature.png");
-            var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
+            var sigBytes   = BrandContext.Current.GetSignatureBytes();
+            var stampBytes = BrandContext.Current.GetStampBytes();
 
             var imgPara = rightCell.InsertParagraph();
             imgPara.SpacingBefore(4);
@@ -590,26 +592,18 @@ public static class WordLetterExport
         doc.InsertTable(t);
     }
 
-    /// <summary>Map raw section name to display label per spec.</summary>
+    /// <summary>
+    /// Map raw section name to display label. Delegates to
+    /// <see cref="IIndustryProfile.SectionDisplayMap"/> so each industry
+    /// pack owns its own mapping. Falls back to <c>"Incoming"</c> for empty
+    /// input (legacy behavior) or the trimmed raw value if unmapped.
+    /// </summary>
     internal static string? MapSectionToDisplay(string section)
     {
         var s = (section ?? "").Trim();
-        if (s.Equals("Box", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Box Panel", StringComparison.OrdinalIgnoreCase))
-            return "Box Panel";
-        if (s.Equals("Material Utama", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Incoming", StringComparison.OrdinalIgnoreCase))
-            return "Incoming";
-        if (s.Equals("Material Pendukung", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Outgoing", StringComparison.OrdinalIgnoreCase))
-            return "Outgoing";
-        if (s.Equals("Material Lainnya", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Karoseri", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Jasa", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Lainnya", StringComparison.OrdinalIgnoreCase))
-            return "Lainnya";
-        return string.IsNullOrWhiteSpace(s) ? "Incoming" : s;
+        if (string.IsNullOrWhiteSpace(s)) return "Incoming";
+        var map = BrandContext.CurrentIndustry.SectionDisplayMap;
+        return map.TryGetValue(s, out var display) ? display : s;
     }
 
     private static int DisplaySectionOrder(string display) => display switch
@@ -657,19 +651,6 @@ public static class WordLetterExport
         p.Alignment = align;
         var run = p.Append(text ?? "").FontSize(9);
         if (bold) run.Bold();
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  EMBEDDED RESOURCE HELPERS
-    // ══════════════════════════════════════════════════════════════════════
-    private static byte[]? TryReadEmbedded(string name)
-    {
-        var asm = typeof(WordLetterExport).Assembly;
-        using var s = asm.GetManifestResourceStream(name);
-        if (s == null) return null;
-        using var ms = new MemoryStream();
-        s.CopyTo(ms);
-        return ms.ToArray();
     }
 
     private static string Get(IDictionary<string, string> s, string key, string fallback)

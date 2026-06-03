@@ -1,5 +1,6 @@
 using System;
 using NSec.Cryptography;
+using RabKit.Branding;
 
 namespace PanelCalculator.Core.Security;
 
@@ -19,19 +20,25 @@ public static class LicenseService
     /// <summary>
     /// Ed25519 public key, base64-encoded (32 raw bytes → 44 chars).
     ///
-    /// === DEVELOPER NOTE ===
-    /// This is a PLACEHOLDER public key generated for development.
-    /// Before the v1.2.4 public release, PT TTS MUST:
-    ///   1) Run: dotnet run --project Tools/LicenseKeyGen -- generate-keypair
-    ///   2) Save the printed private key file securely (NOT in git!)
-    ///   3) Paste the printed public key value below, replacing this constant.
-    ///   4) Re-build the release EXE so the new key is embedded + obfuscated.
-    /// Failing to do this means anyone with the source can forge licenses.
-    /// =====================
+    /// <para>
+    /// Source-of-truth moved to the brand pack
+    /// (<see cref="IBrandConfig.LicensePublicKeyBase64"/>) in the v1.3.0
+    /// refactor — each edition (Panel.Branding, RAB Cepat Branding,
+    /// Carrosserie.Branding, etc.) ships its own signing keypair. The
+    /// matching private key lives offline at the brand owner (issuer);
+    /// it is NEVER committed to git.
+    /// </para>
+    ///
+    /// <para>
+    /// <strong>API surface note</strong> — this used to be a
+    /// <c>const string</c>. It is now a <c>static</c> property. The only
+    /// consumer in this codebase is the line below
+    /// (<see cref="ValidateLicense"/>), and external tools
+    /// (Tools/LicenseKeyGen) just print the value at codegen time —
+    /// neither requires compile-time constness.
+    /// </para>
     /// </summary>
-    // Production public key (Ed25519, raw, base64) — generated 2026-05-18.
-    // Matching private key lives offline at PT TTS (issuer) — NEVER commit it.
-    public const string PublicKeyBase64 = "D5Bk2OC+FFZdZqqtI86iFCiy1/pFRQLbkMBpVQ+ia6w=";
+    public static string PublicKeyBase64 => BrandContext.Current.LicensePublicKeyBase64;
 
     /// <summary>
     /// Validates a license key string against the given hardware fingerprint.

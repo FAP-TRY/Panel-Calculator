@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using PanelCalculator.Core.Services;
+using RabKit.Branding;
 using System.Globalization;
 
 namespace PanelCalculator.WinForms.Services;
@@ -74,12 +75,12 @@ public static class ExcelLetterExport
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Penawaran");
 
-        var companyName  = Get(settings, "CompanyName",    "PT. TRITUNGGAL SWARNA");
+        var companyName  = Get(settings, "CompanyName",    BrandContext.Current.CompanyName.ToUpperInvariant());
         var companyAddr  = Get(settings, "CompanyAddress", "");
         var companyPhone = Get(settings, "CompanyPhone",   "");
         var signerName   = Get(settings, "SignerName",     "");
         var signerTitle  = Get(settings, "SignerTitle",    "Marketing");
-        var offerCity    = Get(settings, "OfferLocation",  "Bandung");
+        var offerCity    = Get(settings, "OfferLocation",  BrandContext.Current.DefaultOfferLocation);
 
         int row = 1;
 
@@ -292,7 +293,7 @@ public static class ExcelLetterExport
         // Signature
         var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
         ws.Cell(row, 1).Value = $"{offerCity}, {dateStr}"; row++;
-        ws.Cell(row, 1).Value = "PT. Tritunggal Swarna"; row += 4;
+        ws.Cell(row, 1).Value = BrandContext.Current.CompanyName; row += 4;
         if (!string.IsNullOrWhiteSpace(signerName))
         {
             ws.Cell(row, 1).Value = signerName;
@@ -342,11 +343,11 @@ public static class ExcelLetterExport
 
         using var wb = new XLWorkbook();
 
-        var companyName  = Get(settings, "CompanyName",    "PT. TRITUNGGAL SWARNA");
+        var companyName  = Get(settings, "CompanyName",    BrandContext.Current.CompanyName.ToUpperInvariant());
         var companyAddr  = Get(settings, "CompanyAddress", "");
         var signerName   = Get(settings, "SignerName",     "");
         var signerTitle  = Get(settings, "SignerTitle",    "Marketing");
-        var offerCity    = Get(settings, "OfferLocation",  "Bandung");
+        var offerCity    = Get(settings, "OfferLocation",  BrandContext.Current.DefaultOfferLocation);
 
         // ── Sheet 1: Penawaran Gabungan (overview) ────────────────────────
         var ws = wb.Worksheets.Add("Penawaran");
@@ -508,7 +509,7 @@ public static class ExcelLetterExport
 
         var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
         ws.Cell(row, 1).Value = $"{offerCity}, {dateStr}"; row++;
-        ws.Cell(row, 1).Value = "PT. Tritunggal Swarna"; row += 4;
+        ws.Cell(row, 1).Value = BrandContext.Current.CompanyName; row += 4;
         if (!string.IsNullOrWhiteSpace(signerName))
         {
             ws.Cell(row, 1).Value = signerName;

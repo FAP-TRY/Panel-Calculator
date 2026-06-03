@@ -2,6 +2,7 @@ using PanelCalculator.Core.Models;
 using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.WinForms.Theme;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -27,7 +28,7 @@ public class LoginForm : Form
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode       = AutoScaleMode.Dpi;
-        Text            = "Kalkulator Panel Tritunggal Swarna";
+        Text            = BrandContext.Current.AppDisplayName;
         Size            = new Size(440, 560);
         StartPosition   = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -92,11 +93,11 @@ public class LoginForm : Form
             SizeMode = PictureBoxSizeMode.Zoom,
             BackColor = Color.Transparent,
         };
-        using (var stream = typeof(LoginForm).Assembly
-                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
+        var logoBytes = BrandContext.Current.GetLogoBytes();
+        if (logoBytes != null)
         {
-            if (stream != null)
-                pbLogo.Image = Image.FromStream(stream);
+            using var stream = new MemoryStream(logoBytes);
+            pbLogo.Image = Image.FromStream(stream);
         }
         card.Controls.Add(pbLogo);
         y += logoSize + 10;
@@ -117,7 +118,7 @@ public class LoginForm : Form
 
         var lblSub = new Label
         {
-            Text      = "Tritunggal Swarna · Engineering Suite",
+            Text      = $"{StripPrefixPt(BrandContext.Current.CompanyName)} · Engineering Suite",
             Font      = AppTheme.FontSmall,
             ForeColor = AppTheme.Text3,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -221,7 +222,7 @@ public class LoginForm : Form
         // Footer
         var lblVersion = new Label
         {
-            Text      = "v1.0  ·  © 2026 Tritunggal Swarna",
+            Text      = $"v1.0  ·  © {DateTime.Now.Year} {StripPrefixPt(BrandContext.Current.CompanyName)}",
             Font      = AppTheme.FontSmall,
             ForeColor = AppTheme.TextMutedColor,
             TextAlign = ContentAlignment.MiddleCenter,
@@ -303,5 +304,21 @@ public class LoginForm : Form
     {
         lblError.Text    = msg;
         lblError.Visible = true;
+    }
+
+    /// <summary>
+    /// Hilangkan prefix "PT." / "PT " / "PT.&nbsp;" dari company name supaya
+    /// label kompak ("Tritunggal Swarna · Engineering Suite" alih-alih
+    /// "PT. Tritunggal Swarna · Engineering Suite"). Aman kalau tidak ada
+    /// prefix — return input apa adanya.
+    /// </summary>
+    private static string StripPrefixPt(string name)
+    {
+        var n = (name ?? "").Trim();
+        if (n.StartsWith("PT.", StringComparison.OrdinalIgnoreCase))
+            return n.Substring(3).TrimStart();
+        if (n.StartsWith("PT ", StringComparison.OrdinalIgnoreCase))
+            return n.Substring(3).TrimStart();
+        return n;
     }
 }

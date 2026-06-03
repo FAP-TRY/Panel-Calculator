@@ -2,13 +2,15 @@
 
   <!--
     RabKit.Branding — engine-side branding abstraction.
-    Target net8.0-windows because IIndustryProfile section themes may
-    reference colors and the calling host (WinForms shell) is Windows.
-    Pure interfaces + the BrandContext static accessor — no concrete
-    branding values live here.
+
+    Target net8.0 (NOT net8.0-windows): the contract surface is pure POCO
+    interfaces + records + hex-string color tokens — no Windows-specific
+    types are referenced. This lets the cross-platform PanelCalculator.Data
+    project (which depends on us for the machine-key pepper) keep its
+    net8.0 TFM without dragging in WinForms transitively.
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

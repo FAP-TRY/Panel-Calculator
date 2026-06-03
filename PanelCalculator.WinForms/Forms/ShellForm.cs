@@ -4,6 +4,7 @@ using PanelCalculator.Data;
 using PanelCalculator.Data.Repositories;
 using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -49,7 +50,7 @@ public class ShellForm : Form
 
         // Version tampil di title bar supaya user/support gampang verify
         // versi instalasi mereka — match lblVersion di top bar + About dialog.
-        Text          = $"Kalkulator Panel Tritunggal Swarna — v{UpdateService.AppVersion}";
+        Text          = $"{BrandContext.Current.AppDisplayName} — v{UpdateService.AppVersion}";
         MinimumSize   = new Size(1150, 700);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor     = AppTheme.Background;
@@ -82,11 +83,11 @@ public class ShellForm : Form
             SizeMode = PictureBoxSizeMode.Zoom,
             BackColor = Color.Transparent,
         };
-        using (var stream = typeof(ShellForm).Assembly
-                   .GetManifestResourceStream("PanelCalculator.WinForms.Assets.logo.png"))
+        var logoBytes = BrandContext.Current.GetLogoBytes();
+        if (logoBytes != null)
         {
-            if (stream != null)
-                pbTopLogo.Image = Image.FromStream(stream);
+            using var stream = new MemoryStream(logoBytes);
+            pbTopLogo.Image = Image.FromStream(stream);
         }
 
         var lblAppTitle = new Label

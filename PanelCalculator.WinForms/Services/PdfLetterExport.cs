@@ -11,8 +11,8 @@ using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
 using PanelCalculator.Core.Services;
+using RabKit.Branding;
 using System.Globalization;
-using System.Reflection;
 using ITextRectangle = iText.Kernel.Geom.Rectangle;
 
 namespace PanelCalculator.WinForms.Services;
@@ -97,9 +97,9 @@ public static class PdfLetterExport
         var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
         var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
 
-        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
-        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
-        var offerLocation = Get(settings, "OfferLocation", "Bandung");
+        var signerName    = Get(settings, "SignerName",    BrandContext.Current.DefaultSignerName);
+        var signerTitle   = Get(settings, "SignerTitle",   BrandContext.Current.DefaultSignerTitle);
+        var offerLocation = Get(settings, "OfferLocation", BrandContext.Current.DefaultOfferLocation);
 
         // ── Letterhead background ─────────────────────────────────────────
         AttachLetterhead(pdf, settings);
@@ -183,9 +183,9 @@ public static class PdfLetterExport
         var reg  = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
         var bold = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
 
-        var signerName    = Get(settings, "SignerName",    "Kuntjoro Handoko");
-        var signerTitle   = Get(settings, "SignerTitle",   "Direktur");
-        var offerLocation = Get(settings, "OfferLocation", "Bandung");
+        var signerName    = Get(settings, "SignerName",    BrandContext.Current.DefaultSignerName);
+        var signerTitle   = Get(settings, "SignerTitle",   BrandContext.Current.DefaultSignerTitle);
+        var offerLocation = Get(settings, "OfferLocation", BrandContext.Current.DefaultOfferLocation);
 
         AttachLetterhead(pdf, settings);
 
@@ -357,7 +357,8 @@ public static class PdfLetterExport
         Document doc, PdfFont reg, PdfFont bold,
         decimal taxPercent, string offerLocation, bool isSingle)
     {
-        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var defaultCity = BrandContext.Current.DefaultOfferLocation;
+        var city = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : defaultCity;
         doc.Add(P("Kondisi Penawaran :", bold, 10, ColorDark).SetMarginBottom(4));
 
         var conds = new List<string>();
@@ -365,7 +366,10 @@ public static class PdfLetterExport
             conds.Add($"Harga belum termasuk PPN {taxPercent:0.##}% (menyesuaikan dengan peraturan pemerintah)");
         else
             conds.Add("Harga belum termasuk PPN (menyesuaikan dengan peraturan pemerintah)");
-        conds.Add($"Harga loco {(string.Equals(city, "Bandung", StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
+        // "Harga loco Pabrik" trigger ketika city == default brand city (mis. Bandung untuk PT TTS).
+        // Kalau brand kedepan punya kota berbeda, kondisional ini tetap berfungsi karena
+        // perbandingannya dengan BrandContext.Current.DefaultOfferLocation.
+        conds.Add($"Harga loco {(string.Equals(city, defaultCity, StringComparison.OrdinalIgnoreCase) ? "Pabrik" : city)}");
         if (!isSingle)
             conds.Add("DP 30% saat PO kami terima dan pelunasan 70% sebelum barang dikirim");
         conds.Add("Harga tidak terikat dan dapat berubah sewaktu-waktu");
@@ -398,7 +402,7 @@ public static class PdfLetterExport
         Document doc, PdfDocument pdf, PdfFont reg, PdfFont bold,
         DateTime createdDate, string offerLocation, string signerName, string signerTitle)
     {
-        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : "Bandung";
+        var city    = !string.IsNullOrWhiteSpace(offerLocation) ? offerLocation : BrandContext.Current.DefaultOfferLocation;
         var dateStr = createdDate.ToLocalTime().ToString("dd MMMM yyyy", IdCulture);
 
         // Capture Y BEFORE the block is added. We need to know roughly where
@@ -428,7 +432,7 @@ public static class PdfLetterExport
             .SetPaddingRight(0);
         sigCell.Add(P($"{city}, {dateStr}", reg, 10, ColorDark)
             .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(2));
-        sigCell.Add(P("PT. Tritunggal Swarna", bold, 10, ColorDark)
+        sigCell.Add(P(BrandContext.Current.CompanyName, bold, 10, ColorDark)
             .SetTextAlignment(TextAlignment.RIGHT).SetMarginBottom(0));
 
         // Reserve vertical space for the signature+stamp overlay
@@ -449,8 +453,8 @@ public static class PdfLetterExport
         // ── Draw signature + stamp overlay in the gap we reserved.
         try
         {
-            var sigBytes   = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.signature.png");
-            var stampBytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.stamp.png");
+            var sigBytes   = BrandContext.Current.GetSignatureBytes();
+            var stampBytes = BrandContext.Current.GetStampBytes();
             if (sigBytes == null && stampBytes == null) return;
 
             int pageAfter = pdf.GetNumberOfPages();
@@ -583,26 +587,18 @@ public static class PdfLetterExport
         doc.Add(tbl);
     }
 
-    /// <summary>Map raw section name to display label per spec.</summary>
+    /// <summary>
+    /// Map raw section name to display label. Delegates to
+    /// <see cref="IIndustryProfile.SectionDisplayMap"/> so each industry
+    /// pack owns its own mapping. Falls back to <c>"Incoming"</c> for empty
+    /// input (legacy behavior) or the trimmed raw value if unmapped.
+    /// </summary>
     internal static string? MapSectionToDisplay(string section)
     {
         var s = (section ?? "").Trim();
-        if (s.Equals("Box", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Box Panel", StringComparison.OrdinalIgnoreCase))
-            return "Box Panel";
-        if (s.Equals("Material Utama", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Incoming", StringComparison.OrdinalIgnoreCase))
-            return "Incoming";
-        if (s.Equals("Material Pendukung", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Outgoing", StringComparison.OrdinalIgnoreCase))
-            return "Outgoing";
-        if (s.Equals("Material Lainnya", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Trailer", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Karoseri", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Jasa", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("Lainnya", StringComparison.OrdinalIgnoreCase))
-            return "Lainnya";
-        return string.IsNullOrWhiteSpace(s) ? "Incoming" : s;
+        if (string.IsNullOrWhiteSpace(s)) return "Incoming";
+        var map = BrandContext.CurrentIndustry.SectionDisplayMap;
+        return map.TryGetValue(s, out var display) ? display : s;
     }
 
     private static int DisplaySectionOrder(string? display) => display switch
@@ -628,8 +624,8 @@ public static class PdfLetterExport
             return;
         }
 
-        // 2. Embedded resource
-        var bytes = TryReadEmbedded("PanelCalculator.WinForms.Assets.Letterhead.letterhead.jpg");
+        // 2. Brand-pack asset (sumber: Panel.Branding.dll embedded resource)
+        var bytes = BrandContext.Current.GetLetterheadBytes();
         if (bytes != null)
             pdf.AddEventHandler(PdfDocumentEvent.START_PAGE,
                 new BackgroundImageHandler(bytes));
@@ -709,27 +705,4 @@ public static class PdfLetterExport
     /// <summary>Format with Indonesian decimal (e.g. 4.320.000,-)</summary>
     private static string RpDash(decimal value)
         => value.ToString("N0", IdCulture) + ",-";
-
-    private static Stream? TryLoadEmbedded(string name)
-    {
-        var asm = typeof(PdfLetterExport).Assembly;
-        return asm.GetManifestResourceStream(name);
-    }
-
-    private static byte[]? TryReadEmbedded(string name)
-    {
-        using var s = TryLoadEmbedded(name);
-        if (s == null) return null;
-        using var ms = new MemoryStream();
-        s.CopyTo(ms);
-        return ms.ToArray();
-    }
-
-    private static byte[] ReadAll(Stream s)
-    {
-        if (s is MemoryStream ms2) return ms2.ToArray();
-        using var ms = new MemoryStream();
-        s.CopyTo(ms);
-        return ms.ToArray();
-    }
 }

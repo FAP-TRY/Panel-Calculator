@@ -40,6 +40,15 @@ public interface IBrandConfig
     /// <summary>Marketing website without scheme (e.g. "www.tritunggalswarna.co.id").</summary>
     string CompanyWebsite { get; }
 
+    /// <summary>
+    /// Support WhatsApp number used as the wa.me deep-link target in the
+    /// activation form ("Hubungi support via WhatsApp"). Format: international
+    /// digits without "+" or spaces (e.g. <c>"628123456789"</c>). Return
+    /// empty string when the brand has no public WhatsApp channel — the
+    /// activation form falls back to a non-functional placeholder.
+    /// </summary>
+    string SupportWhatsAppNumber { get; }
+
     // ── Default signer (override-able per-user via AppSettings) ──────────
 
     /// <summary>Default signer name shown on PDF/Word penawaran.</summary>
