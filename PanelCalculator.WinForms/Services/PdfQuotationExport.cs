@@ -7,6 +7,7 @@ using iText.Layout.Borders;
 using iText.Layout.Element;
 using iText.Layout.Properties;
 using PanelCalculator.Core.Services;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Services;
 
@@ -19,30 +20,15 @@ public static class PdfQuotationExport
     private static readonly DeviceRgb ColorWhite      = new(255, 255, 255);
     private static readonly DeviceRgb ColorLightGray  = new(249, 250, 251);
 
-    // ── Section header palette (one unique color per section) ────────────
-    // Each tone is a *light* tint used as the row background; a matching
-    // *dark* tone is used for the label text so contrast stays >= 4.5:1
-    // (engineer-friendly, not girly: every accent is desaturated and dark
-    // enough to read clearly even on cheap office printers).
-    private static readonly DeviceRgb ColorSecBgBlue    = new(219, 234, 254);  // Material Utama
-    private static readonly DeviceRgb ColorSecFgBlue    = new( 30,  64, 175);
-
-    private static readonly DeviceRgb ColorSecBgYellow  = new(254, 249, 195);  // Material Pendukung
-    private static readonly DeviceRgb ColorSecFgYellow  = new(133, 100,   4);
-
-    private static readonly DeviceRgb ColorSecBgGreen   = new(220, 252, 231);  // Material Lainnya
-    private static readonly DeviceRgb ColorSecFgGreen   = new( 21, 128,  61);
-
-    private static readonly DeviceRgb ColorSecBgPurple  = new(237, 233, 254);  // Box
-    private static readonly DeviceRgb ColorSecFgPurple  = new( 91,  33, 182);
-
-    private static readonly DeviceRgb ColorSecBgOrange  = new(255, 237, 213);  // Incoming / Outgoing
-    private static readonly DeviceRgb ColorSecFgOrange  = new(154,  52,  18);
-
-    private static readonly DeviceRgb ColorSecBgTeal    = new(207, 250, 254);  // Trailer / Karoseri
-    private static readonly DeviceRgb ColorSecFgTeal    = new( 14, 116, 144);
-
-    private static readonly DeviceRgb ColorSecBgSlate   = new(226, 232, 240);  // Jasa
+    // ── Section header palette ───────────────────────────────────────────
+    // The per-section divider palette (one light tint + matching dark text
+    // per section, contrast >= 4.5:1, engineer-friendly tones) now lives in
+    // BrandContext.CurrentIndustry.SectionThemes — slots PdfModernBgHex and
+    // PdfModernFgHex carry exactly the same values that previously sat in
+    // local ColorSecBg*/ColorSecFg* constants. Fallback for unknown
+    // sections is slate (#E2E8F0 / #334155) which matches the legacy
+    // default arm of SectionHeaderColors.
+    private static readonly DeviceRgb ColorSecBgSlate   = new(226, 232, 240);
     private static readonly DeviceRgb ColorSecFgSlate   = new( 51,  65,  85);
 
     // Reused by other helpers
@@ -139,13 +125,10 @@ public static class PdfQuotationExport
                     .Add(new Paragraph(h).SetFont(fontBold).SetFontSize(9).SetFontColor(ColorWhite)));
         }
 
-        // Render ALL sections present in the estimate, not just 3.
-        // This matches PdfLetterExport.cs section list so Box/Incoming/Outgoing/
-        // Trailer/Karoseri/Jasa show up in the Modern format too.
-        var sectionGroups = new[] {
-            "Material Utama", "Material Pendukung", "Material Lainnya",
-            "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
-        };
+        // Render ALL sections present in the estimate (not just the legacy 3).
+        // Section vocabulary now comes from the active industry profile so
+        // a brand pack swap automatically picks the right list.
+        var sectionGroups = BrandContext.CurrentIndustry.Sections;
         int globalNo = 0;
 
         foreach (var section in sectionGroups)
@@ -303,24 +286,45 @@ public static class PdfQuotationExport
 
     // ── Helpers ──────────────────────────────────────────────────────────
     /// <summary>
-    /// Returns the (background, foreground) tuple for a section header. Each
-    /// canonical section gets its own colour pair — no rotation — so a PDF
-    /// containing all sections reads as 7 distinct bands. Unknown sections
-    /// fall back to slate (engineer-neutral grey-blue).
+    /// Returns the (background, foreground) tuple for a section header. The
+    /// concrete palette is supplied by
+    /// <see cref="BrandContext.CurrentIndustry"/> via
+    /// <see cref="IndustrySectionTheme.PdfModernBgHex"/> /
+    /// <see cref="IndustrySectionTheme.PdfModernFgHex"/>; unknown sections
+    /// (or industry packs that omit the PdfModern* slot) fall back to
+    /// slate (engineer-neutral grey-blue) matching the legacy default arm.
     /// </summary>
-    private static (DeviceRgb bg, DeviceRgb fg) SectionHeaderColors(string section) => section switch
+    private static (DeviceRgb bg, DeviceRgb fg) SectionHeaderColors(string section)
     {
-        "Material Utama"     => (ColorSecBgBlue,   ColorSecFgBlue),
-        "Material Pendukung" => (ColorSecBgYellow, ColorSecFgYellow),
-        "Material Lainnya"   => (ColorSecBgGreen,  ColorSecFgGreen),
-        "Box"                => (ColorSecBgPurple, ColorSecFgPurple),
-        "Incoming"           => (ColorSecBgOrange, ColorSecFgOrange),
-        "Outgoing"           => (ColorSecBgOrange, ColorSecFgOrange),
-        "Trailer"            => (ColorSecBgTeal,   ColorSecFgTeal),
-        "Karoseri"           => (ColorSecBgTeal,   ColorSecFgTeal),
-        "Jasa"               => (ColorSecBgSlate,  ColorSecFgSlate),
-        _                    => (ColorSecBgSlate,  ColorSecFgSlate)
-    };
+        var themes = BrandContext.CurrentIndustry.SectionThemes;
+        if (themes.TryGetValue(section, out var theme))
+        {
+            var bgHex = theme.PdfModernBgHex;
+            var fgHex = theme.PdfModernFgHex;
+            if (bgHex != null && fgHex != null)
+                return (HexToDeviceRgb(bgHex), HexToDeviceRgb(fgHex));
+        }
+        return (ColorSecBgSlate, ColorSecFgSlate);
+    }
+
+    /// <summary>
+    /// Parse a CSS-style "#RRGGBB" hex string into an iText
+    /// <see cref="DeviceRgb"/>. Accepts an optional leading "#".
+    /// Throws <see cref="ArgumentException"/> on malformed input — the
+    /// brand pack should never ship an invalid hex string, so a clear
+    /// crash at startup beats a silent visual fallback.
+    /// </summary>
+    private static DeviceRgb HexToDeviceRgb(string hex)
+    {
+        var s = hex.TrimStart('#');
+        if (s.Length != 6)
+            throw new ArgumentException(
+                $"Expected 6-char hex color, got '{hex}'.", nameof(hex));
+        var r = byte.Parse(s.AsSpan(0, 2), System.Globalization.NumberStyles.HexNumber);
+        var g = byte.Parse(s.AsSpan(2, 2), System.Globalization.NumberStyles.HexNumber);
+        var b = byte.Parse(s.AsSpan(4, 2), System.Globalization.NumberStyles.HexNumber);
+        return new DeviceRgb(r, g, b);
+    }
 
     private static void AddItemCell(
         Table table, string text, PdfFont font,
@@ -460,10 +464,7 @@ public static class PdfQuotationExport
                         .SetPaddingTop(6).SetPaddingBottom(6).SetPaddingLeft(6).SetPaddingRight(6)
                         .Add(new Paragraph(h).SetFont(fontBold).SetFontSize(9).SetFontColor(ColorWhite)));
 
-            var sectionGroups = new[] {
-                "Material Utama", "Material Pendukung", "Material Lainnya",
-                "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
-            };
+            var sectionGroups = BrandContext.CurrentIndustry.Sections;
             int globalNo = 0;
             foreach (var section in sectionGroups)
             {

@@ -23,8 +23,11 @@ public sealed class PanelIndustryProfile : IIndustryProfile
     public string IndustryDisplayName => "Panel Listrik";
 
     /// <summary>
-    /// Ordered section list. Mirrors <c>MainForm.Sections</c> + the
-    /// "Lainnya" alias that the PDF/Word writers fold into.
+    /// Ordered section list — exactly mirrors the legacy
+    /// <c>MainForm.Sections</c> array. The "Lainnya" PDF/Word fold target
+    /// is intentionally not listed here; that mapping lives in
+    /// <see cref="SectionDisplayMap"/> instead so the UI dropdown and the
+    /// grouped grid stay clean.
     /// </summary>
     public IReadOnlyList<string> Sections { get; } = new[]
     {
@@ -37,37 +40,94 @@ public sealed class PanelIndustryProfile : IIndustryProfile
         "Trailer",
         "Karoseri",
         "Jasa",
-        "Lainnya",
     };
 
     /// <summary>
-    /// Per-section theme — keys match <see cref="Sections"/>.
-    /// Hex color = section header foreground accent (sky-blue, amber, etc.),
-    /// text hex = near-black so the accent reads well as a chip background.
+    /// Per-section theme — keys cover every name in <see cref="Sections"/>
+    /// plus the <c>"Lainnya"</c> PDF-fold target.
+    ///
+    /// <para>
+    /// Color slot semantics (all values mirror the legacy hardcoded
+    /// constants that lived in MainForm.cs lines ~1990-2030 and
+    /// PdfQuotationExport.cs lines ~27-46, byte-identical so the W3 port
+    /// is a pure no-op visually):
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><c>HexColor</c> = section header foreground accent (sky-blue, amber, …).
+    ///     Used by MainForm header row text + PDF Formal divider accent.</item>
+    ///   <item><c>TextHexColor</c> = MainForm header row background (dark navy/amber/etc.) —
+    ///     near-black contrast for the bright accent above.</item>
+    ///   <item><c>UiHeaderBgHex</c> = same as TextHexColor here (kept explicit
+    ///     for callers that want the slot semantics directly).</item>
+    ///   <item><c>UiRowBgHex</c> = MainForm data row background (darker than header).</item>
+    ///   <item><c>PdfModernBgHex</c> = PdfQuotationExport pastel divider bg.</item>
+    ///   <item><c>PdfModernFgHex</c> = PdfQuotationExport dark text on pastel divider.</item>
+    /// </list>
     /// </summary>
     public IReadOnlyDictionary<string, IndustrySectionTheme> SectionThemes { get; }
         = new Dictionary<string, IndustrySectionTheme>(StringComparer.OrdinalIgnoreCase)
         {
             // Sky-blue
-            ["Material Utama"]     = new("#7DD2FF", "#0F1637"),
+            ["Material Utama"]     = new("#7DD2FF", "#0F1637")
+            {
+                UiHeaderBgHex  = "#0F1637", UiRowBgHex     = "#0B1020",  // AppTheme.Bg1
+                PdfModernBgHex = "#DBEAFE", PdfModernFgHex = "#1E40AF",
+            },
             // Amber
-            ["Material Pendukung"] = new("#FBBF24", "#201608"),
+            ["Material Pendukung"] = new("#FBBF24", "#201608")
+            {
+                UiHeaderBgHex  = "#201608", UiRowBgHex     = "#0E0C06",
+                PdfModernBgHex = "#FEF9C3", PdfModernFgHex = "#856404",
+            },
             // Emerald
-            ["Material Lainnya"]   = new("#34D399", "#081C10"),
+            ["Material Lainnya"]   = new("#34D399", "#081C10")
+            {
+                UiHeaderBgHex  = "#081C10", UiRowBgHex     = "#070D0A",
+                PdfModernBgHex = "#DCFCE7", PdfModernFgHex = "#15803D",
+            },
             // Orange
-            ["Box"]                = new("#FDBA74", "#261406"),
+            ["Box"]                = new("#FDBA74", "#261406")
+            {
+                UiHeaderBgHex  = "#261406", UiRowBgHex     = "#100A04",
+                PdfModernBgHex = "#EDE9FE", PdfModernFgHex = "#5B21B6",
+            },
             // Violet
-            ["Incoming"]           = new("#C4B5FD", "#1C1030"),
+            ["Incoming"]           = new("#C4B5FD", "#1C1030")
+            {
+                UiHeaderBgHex  = "#1C1030", UiRowBgHex     = "#0A0614",
+                PdfModernBgHex = "#FFEDD5", PdfModernFgHex = "#9A3412",
+            },
             // Rose
-            ["Outgoing"]           = new("#FDA4AF", "#300A10"),
+            ["Outgoing"]           = new("#FDA4AF", "#300A10")
+            {
+                UiHeaderBgHex  = "#300A10", UiRowBgHex     = "#140508",
+                PdfModernBgHex = "#FFEDD5", PdfModernFgHex = "#9A3412",
+            },
             // Cyan
-            ["Trailer"]            = new("#67E8F9", "#061E26"),
+            ["Trailer"]            = new("#67E8F9", "#061E26")
+            {
+                UiHeaderBgHex  = "#061E26", UiRowBgHex     = "#040E12",
+                PdfModernBgHex = "#CFFAFE", PdfModernFgHex = "#0E7490",
+            },
             // Yellow
-            ["Karoseri"]           = new("#FDE047", "#282206"),
+            ["Karoseri"]           = new("#FDE047", "#282206")
+            {
+                UiHeaderBgHex  = "#282206", UiRowBgHex     = "#110E04",
+                PdfModernBgHex = "#CFFAFE", PdfModernFgHex = "#0E7490",
+            },
             // Fuchsia
-            ["Jasa"]               = new("#F0ABFC", "#260A22"),
-            // Same as Material Lainnya — used by the PDF map
-            ["Lainnya"]            = new("#34D399", "#081C10"),
+            ["Jasa"]               = new("#F0ABFC", "#260A22")
+            {
+                UiHeaderBgHex  = "#260A22", UiRowBgHex     = "#10050E",
+                PdfModernBgHex = "#E2E8F0", PdfModernFgHex = "#334155",
+            },
+            // PDF "Lainnya" fold target — same accent palette as Material Lainnya
+            // so the divider on the "Rincian Material > Lainnya" page reads identical.
+            ["Lainnya"]            = new("#34D399", "#081C10")
+            {
+                UiHeaderBgHex  = "#081C10", UiRowBgHex     = "#070D0A",
+                PdfModernBgHex = "#E2E8F0", PdfModernFgHex = "#334155",
+            },
         };
 
     /// <summary>

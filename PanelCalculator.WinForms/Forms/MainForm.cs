@@ -35,11 +35,14 @@ public partial class MainForm : Form
     private Point _dragStartPoint;
     private bool  _isDraggingProduct;
 
-    private static readonly string[] Sections =
-    {
-        "Material Utama", "Material Pendukung", "Material Lainnya",
-        "Box", "Incoming", "Outgoing", "Trailer", "Karoseri", "Jasa"
-    };
+    /// <summary>
+    /// Ordered section list for this estimation — resolved from the active
+    /// industry profile (<see cref="BrandContext.CurrentIndustry"/>) at every
+    /// access so swapping brands at startup picks the right vocabulary
+    /// without requiring a recompile of this form. Cached behind a property
+    /// so the JIT inlines the single dictionary lookup.
+    /// </summary>
+    private static IReadOnlyList<string> Sections => BrandContext.CurrentIndustry.Sections;
 
     // ── UI Controls ──────────────────────────────────────────────────────
     private DataGridView dgvProducts = null!;
@@ -415,7 +418,7 @@ public partial class MainForm : Form
             Font          = AppTheme.FontBase
         };
         AppTheme.StyleComboBox(cmbTargetSection);
-        cmbTargetSection.Items.AddRange(Sections);
+        cmbTargetSection.Items.AddRange(Sections.Cast<object>().ToArray());
         cmbTargetSection.SelectedIndex = 0; // default: Material Utama
         // Update background color to match selected section (dark tinted variants)
         cmbTargetSection.SelectedIndexChanged += (s, e) =>
@@ -1918,10 +1921,18 @@ public partial class MainForm : Form
         _currentItems.Clear();
         _activeSections.Clear();
         // Restore active sections from loaded items so the grid groups are preserved
+        // Use the canonical order from BrandContext (IndexOf on IReadOnlyList — O(N)
+        // per item, but Sections.Count ≤ 10 so overhead is negligible).
+        var sectionList = Sections;
         _activeSections.AddRange(est.Details
             .Select(d => string.IsNullOrWhiteSpace(d.Section) ? "Material Utama" : d.Section)
             .Distinct()
-            .OrderBy(s => Array.IndexOf(Sections, s)));
+            .OrderBy(s =>
+            {
+                for (int i = 0; i < sectionList.Count; i++)
+                    if (string.Equals(sectionList[i], s, StringComparison.OrdinalIgnoreCase)) return i;
+                return int.MaxValue;
+            }));
         foreach (var d in est.Details)
         {
             _currentItems.Add(new EstimationLineItem
@@ -1987,47 +1998,34 @@ public partial class MainForm : Form
     }
 
     // ── Section color helpers (dark-pro palette) ─────────────────────────
-    private static Color SectionHeaderColor(string section) => section switch
+    // The per-section palette now lives in
+    // BrandContext.CurrentIndustry.SectionThemes — each entry carries 6
+    // color slots, of which 3 are read here (UiHeaderBgHex, UiRowBgHex,
+    // HexColor a.k.a. header foreground accent). Null slots fall back to
+    // the same neutral AppTheme defaults the legacy switch used.
+    private static IndustrySectionTheme? LookupSectionTheme(string section)
     {
-        "Material Utama"     => Color.FromArgb(15,  22,  55),  // navy
-        "Material Pendukung" => Color.FromArgb(32,  22,   8),  // amber
-        "Material Lainnya"   => Color.FromArgb( 8,  28,  16),  // green
-        "Box"                => Color.FromArgb(38,  20,   6),  // orange
-        "Incoming"           => Color.FromArgb(28,  16,  48),  // purple
-        "Outgoing"           => Color.FromArgb(48,  10,  16),  // rose
-        "Trailer"            => Color.FromArgb( 6,  30,  38),  // cyan
-        "Karoseri"           => Color.FromArgb(40,  34,   6),  // yellow
-        "Jasa"               => Color.FromArgb(38,  10,  34),  // fuchsia
-        _                    => AppTheme.Bg2
-    };
+        var themes = BrandContext.CurrentIndustry.SectionThemes;
+        return themes.TryGetValue(section, out var t) ? t : null;
+    }
 
-    private static Color SectionRowColor(string section) => section switch
+    private static Color SectionHeaderColor(string section)
     {
-        "Material Utama"     => AppTheme.Bg1,
-        "Material Pendukung" => Color.FromArgb(14,  12,   6),
-        "Material Lainnya"   => Color.FromArgb( 7,  13,  10),
-        "Box"                => Color.FromArgb(16,  10,   4),
-        "Incoming"           => Color.FromArgb(10,   6,  20),
-        "Outgoing"           => Color.FromArgb(20,   5,   8),
-        "Trailer"            => Color.FromArgb( 4,  14,  18),
-        "Karoseri"           => Color.FromArgb(17,  14,   4),
-        "Jasa"               => Color.FromArgb(16,   5,  14),
-        _                    => AppTheme.Bg1
-    };
+        var t = LookupSectionTheme(section);
+        return t?.UiHeaderBgHex is { } hex ? ColorTranslator.FromHtml(hex) : AppTheme.Bg2;
+    }
 
-    private static Color SectionHeaderForeColor(string section) => section switch
+    private static Color SectionRowColor(string section)
     {
-        "Material Utama"     => Color.FromArgb(125, 210, 255), // sky-blue
-        "Material Pendukung" => Color.FromArgb(251, 191,  36), // amber-300
-        "Material Lainnya"   => Color.FromArgb( 52, 211, 153), // emerald-300
-        "Box"                => Color.FromArgb(253, 186, 116), // orange-300
-        "Incoming"           => Color.FromArgb(196, 181, 253), // violet-300
-        "Outgoing"           => Color.FromArgb(253, 164, 175), // rose-300
-        "Trailer"            => Color.FromArgb(103, 232, 249), // cyan-300
-        "Karoseri"           => Color.FromArgb(253, 224,  71), // yellow-300
-        "Jasa"               => Color.FromArgb(240, 171, 252), // fuchsia-300
-        _                    => AppTheme.Text2
-    };
+        var t = LookupSectionTheme(section);
+        return t?.UiRowBgHex is { } hex ? ColorTranslator.FromHtml(hex) : AppTheme.Bg1;
+    }
+
+    private static Color SectionHeaderForeColor(string section)
+    {
+        var t = LookupSectionTheme(section);
+        return t is null ? AppTheme.Text2 : ColorTranslator.FromHtml(t.HexColor);
+    }
 
     // ── Lanjutkan Nomor Surat ─────────────────────────────────────────────
     /// <summary>Fills txtNomorSurat with the most recent estimation's NomorSurat so the

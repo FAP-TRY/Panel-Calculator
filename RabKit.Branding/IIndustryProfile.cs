@@ -36,9 +36,11 @@ public interface IIndustryProfile
 
     /// <summary>
     /// Per-section UI/PDF theme (background + text color) for grid rows
-    /// and Rincian Material dividers. Keys MUST match values from
-    /// <see cref="Sections"/>. Case-insensitive lookups are the caller's
-    /// responsibility — provide both raw forms if needed.
+    /// and Rincian Material dividers. Keys SHOULD include every name in
+    /// <see cref="Sections"/> plus the unique display-label targets from
+    /// <see cref="SectionDisplayMap"/> (e.g. <c>"Lainnya"</c>) so the PDF
+    /// fold targets render with a consistent palette. Case-insensitive
+    /// lookups are the caller's responsibility.
     /// </summary>
     IReadOnlyDictionary<string, IndustrySectionTheme> SectionThemes { get; }
 
@@ -71,5 +73,46 @@ public interface IIndustryProfile
 /// CSS-style hex strings so the same definition is reusable across
 /// WinForms (System.Drawing.Color) and iText (DeviceRgb) without bringing
 /// a Windows-only dependency into this contract assembly.
+///
+/// <para>
+/// The two required fields (<see cref="HexColor"/> + <see cref="TextHexColor"/>)
+/// represent the primary "section accent" palette — historically used by
+/// PDF Formal divider rows and reusable as a default when the more
+/// specific UI / PDF-Modern slots are omitted. The init-only properties
+/// (<c>UiHeaderBgHex</c>, <c>UiRowBgHex</c>, <c>PdfModernBgHex</c>,
+/// <c>PdfModernFgHex</c>) carry palette variants that other surfaces need
+/// without forcing every brand to provide all four. When a slot is null
+/// the caller is expected to fall back to a sensible default (see the
+/// MainForm.GetSectionTheme / PdfQuotationExport.GetSectionTheme helpers).
+/// </para>
 /// </summary>
-public sealed record IndustrySectionTheme(string HexColor, string TextHexColor);
+public sealed record IndustrySectionTheme(string HexColor, string TextHexColor)
+{
+    /// <summary>
+    /// MainForm: section <em>header row</em> background. Dark-pro palette
+    /// uses near-black tints (e.g. navy <c>#0F1637</c>) so the bright
+    /// foreground accent reads as a chip. Null → caller's fallback.
+    /// </summary>
+    public string? UiHeaderBgHex { get; init; }
+
+    /// <summary>
+    /// MainForm: section <em>data row</em> background. Slightly darker than
+    /// <see cref="UiHeaderBgHex"/> to differentiate item rows from the
+    /// header. Null → caller's fallback (typically <c>AppTheme.Bg1</c>).
+    /// </summary>
+    public string? UiRowBgHex { get; init; }
+
+    /// <summary>
+    /// PdfQuotationExport (PDF Modern): light pastel background for the
+    /// section divider row. Pairs with <see cref="PdfModernFgHex"/> for
+    /// contrast &gt;= 4.5:1. Null → caller's slate fallback.
+    /// </summary>
+    public string? PdfModernBgHex { get; init; }
+
+    /// <summary>
+    /// PdfQuotationExport (PDF Modern): dark foreground/text color used on
+    /// the <see cref="PdfModernBgHex"/> divider row. Null → caller's slate
+    /// fallback.
+    /// </summary>
+    public string? PdfModernFgHex { get; init; }
+}

@@ -6,6 +6,7 @@ using PanelCalculator.Data.DataSeeding;
 using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Services;
 using PanelCalculator.WinForms.Theme;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Forms;
 
@@ -923,25 +924,13 @@ public class SettingsForm : Form
         => new string(s.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
 
     // ── Derive category from product family name ──────────────────────────────
+    // Heuristic now lives in the active industry profile so each brand pack
+    // can ship its own family→category rules (panel pack keeps the MCB/
+    // MCCB/ACB rules; a future carrosserie pack supplies SPCC/UNP/IWF).
+    // Falls back to the raw family string when the heuristic returns null
+    // (matches the legacy "Other" sentinel via PanelIndustryProfile).
     private static string FamilyToCategory(string family)
-    {
-        var t = family.ToLowerInvariant();
-        if (t.Contains("rccb") || t.Contains("rcbo") || t.Contains("elcb") || t.Contains("residual") || t.Contains("iid")) return "RCCB";
-        if (t.Contains("acb")  || t.Contains("air circuit") || t.Contains("masterpact") || t.Contains("nw")) return "ACB";
-        if (t.Contains("mccb") || t.Contains("molded") || t.Contains("gopact") || t.Contains("cvs") ||
-            t.Contains("nsx")  || t.Contains("nm1")    || t.Contains("nm8")    || t.Contains("nc100")) return "MCCB";
-        if (t.Contains("mcb")  || t.Contains("miniature") || t.Contains("easy9") || t.Contains("domae") ||
-            t.Contains("nxb")  || t.Contains("nb1")    || t.Contains("nb3")    || t.Contains("nb4")) return "MCB";
-        if (t.Contains("kontaktor") || t.Contains("contactor") || t.Contains("tesys") ||
-            t.Contains("lc1")  || t.Contains("lc3")    || t.Contains("nc1")    || t.Contains("nc2")) return "Kontaktor";
-        if (t.Contains("motor cb") || t.Contains("motor circuit") || t.Contains("gv2") || t.Contains("gv3")) return "Motor CB";
-        if (t.Contains("surge") || t.Contains("spd") || t.Contains("lightning") || t.Contains("arrester")) return "Surge Arrester";
-        if (t.Contains("vsd")   || t.Contains("inverter") || t.Contains("variable speed") || t.Contains("nv")) return "VSD";
-        if (t.Contains("ats")   || t.Contains("transfer switch") || t.Contains("nz7")) return "ATS";
-        if (t.Contains("busbar") || t.Contains("isobar") || t.Contains("linergy")) return "Busbar";
-        if (t.Contains("box")   || t.Contains("pragma") || t.Contains("enclosure")) return "Box";
-        return "Other";
-    }
+        => BrandContext.CurrentIndustry.CategoryFromFamily(family) ?? family;
 
     // ── Format a spec column value based on the column's semantic type ─────────
     private static string FormatSpecValue(string colKey, string val)
