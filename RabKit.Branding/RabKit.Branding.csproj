@@ -22,4 +22,18 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      Ed25519 signature verification for the signed edition.manifest.bundle.
+      Pinned at 24.4.0 — same version used by PanelCalculator.Core for the
+      license signer/verifier, so the EXE only ships ONE NSec runtime.
+    -->
+    <PackageReference Include="NSec.Cryptography" Version="24.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Expose EditionContext.ResetForTests + BrandContext.ResetForTests to tests. -->
+    <InternalsVisibleTo Include="PanelCalculator.Tests" />
+  </ItemGroup>
+
 </Project>

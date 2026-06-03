@@ -106,6 +106,52 @@ static class Program
             new PanelBranding.PanelBrandConfig(),
             new PanelBranding.PanelIndustryProfile());
 
+        // ── Edition manifest wiring (W4 / v1.3.0+) ──────────────────────
+        // Load the signed edition.manifest.bundle embedded in the brand
+        // pack DLL. Bundle is signed offline with the issuer's Ed25519
+        // private key; signature is verified here with the public key the
+        // brand pack also embeds. Tampering with either resource aborts
+        // boot with a clear "manifest invalid" error.
+        //
+        // Dev builds that ship without a bundled manifest (e.g. when
+        // someone scaffolds a new brand pack) fall back to a permissive
+        // "dev-mode" manifest that EditionContext treats as Custom.
+        try
+        {
+            var manifestBytes = RabKit.Branding.BrandContext.Current.GetEditionManifestBundle();
+            RabKit.Branding.EditionManifest manifest;
+            if (manifestBytes != null)
+            {
+                manifest = RabKit.Branding.SignedManifestLoader.LoadAndVerifyFromBundle(
+                    manifestBytes,
+                    RabKit.Branding.BrandContext.Current.LicensePublicKeyBase64);
+            }
+            else
+            {
+                manifest = new RabKit.Branding.EditionManifest(
+                    EditionId: "dev-mode",
+                    EditionTier: "custom",
+                    Industry: "panel-electrical",
+                    BundledIndustryPackId: "dev",
+                    Features: new RabKit.Branding.EditionFeatures(MaxConcurrentSeats: 1),
+                    IssuedAt: DateTime.UtcNow,
+                    IssuerKey: RabKit.Branding.BrandContext.Current.LicensePublicKeyBase64);
+            }
+            RabKit.Branding.EditionContext.Initialize(manifest);
+        }
+        catch (RabKit.Branding.InvalidManifestException ex)
+        {
+            CrashLog("EditionManifest.LoadAndVerify", ex);
+            MessageBox.Show(
+                "Manifest edisi tidak valid — kemungkinan file installer ter-tamper.\n\n" +
+                $"Detail: {ex.Message}\n\n" +
+                "Mohon download ulang installer dari sumber resmi atau hubungi support.",
+                $"{BrandContext.Current.AppDisplayName} — Manifest Invalid",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
         // ── Initialize SQLitePCLRaw with the SQLCipher provider BEFORE any
         // SqliteConnection is opened. The bundle has a module initializer
         // that does this automatically when the assembly is loaded, but we

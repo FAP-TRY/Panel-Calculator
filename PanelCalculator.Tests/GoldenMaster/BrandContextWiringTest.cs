@@ -15,11 +15,16 @@ namespace PanelCalculator.Tests.GoldenMaster;
 /// </para>
 /// </summary>
 [Trait("Category", "GoldenMaster")]
+[Collection("EditionContextSerial")]   // share collection with EditionContextTests
+                                       // (both mutate the BrandContext singleton).
 public class BrandContextWiringTest
 {
     private static void EnsureInitialized()
     {
-        if (BrandContext.IsInitialized) return;
+        // Force-initialize with the production PT TTS values. We re-bind on
+        // every test even when IsInitialized is true so a sibling test that
+        // swapped in a test brand (EditionContextTests) doesn't leak its
+        // TestBrandConfig stub into this assert.
         BrandContext.Initialize(
             new PanelBranding.PanelBrandConfig(),
             new PanelBranding.PanelIndustryProfile());
@@ -89,7 +94,7 @@ public class BrandContextWiringTest
         EnsureInitialized();
         Assert.Equal("Kalkulator Panel Tritunggal Swarna", BrandContext.Current.AppDisplayName);
         Assert.Equal("PanelCalculator",                    BrandContext.Current.AppDataFolderName);
-        Assert.Equal("1.2.9",                              BrandContext.Current.AppVersion);
+        Assert.Equal("1.3.0",                              BrandContext.Current.AppVersion);
         Assert.Equal("EST-{0:yyyyMMdd}-{1:D3}",            BrandContext.Current.EstimationNumberPattern);
     }
 

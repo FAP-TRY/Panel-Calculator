@@ -3,7 +3,7 @@
 ; ============================================================
 
 #define AppName      "Kalkulator Panel Tritunggal Swarna"
-#define AppVersion   "1.2.9"
+#define AppVersion   "1.3.0"
 #define AppPublisher "PT Tritunggal Swarna"
 ; Nama file EXE setelah terinstall (di Program Files). Match dengan output
 ; build-release-singlefile.ps1 yang menulis publish\PanelCalculator.exe.
@@ -21,7 +21,7 @@ AppPublisherURL=https://tritunggalswarna.com
 DefaultDirName={autopf}\TritunggalSwarna\KalkulatorPanel
 DefaultGroupName={#AppName}
 OutputDir=Installer
-OutputBaseFilename=KalkulatorPanel-TTS-v1.2.9-Setup
+OutputBaseFilename=KalkulatorPanel-TTS-v1.3.0-Setup
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern

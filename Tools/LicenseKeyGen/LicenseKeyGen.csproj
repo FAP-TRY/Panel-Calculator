@@ -40,6 +40,8 @@
   <ItemGroup>
     <!-- Reference Core so we share LicensePayload + LicenseService internals. -->
     <ProjectReference Include="..\..\PanelCalculator.Core\PanelCalculator.Core.csproj" />
+    <!-- v1.3.0+: V2 license issuance + manifest signing use RabKit.Branding records. -->
+    <ProjectReference Include="..\..\RabKit.Branding\RabKit.Branding.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,6 +5,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows.Forms;
 using PanelCalculator.Tools.LicenseKeyGen;
+using RabKit.Branding;
 
 namespace PanelCalculator.Tools.LicenseKeyGenGui;
 
@@ -47,11 +48,21 @@ public sealed class MainForm : Form
     private readonly Button   _btnSendWa        = new();
     private readonly Label    _lblStatus        = new();
 
+    // ── V2 edition claim fields (v1.3.0+) ───────────────────────────────
+    // Visible-but-defaulted so PT TTS workflow stays one-click while still
+    // letting the admin override for Generic/Lifetime/Marketplace deals.
+    private readonly CheckBox _chkV2Claims     = new();
+    private readonly ComboBox _cmbTier         = new();
+    private readonly TextBox  _txtIndustry     = new();
+    private readonly TextBox  _txtEditionId    = new();
+    private readonly CheckBox _chkExpires      = new();
+    private readonly DateTimePicker _dtpExpires = new();
+
     public MainForm()
     {
         // ── Window setup ────────────────────────────────────────────────
         Text          = "License Issuer — PT Tritunggal Swarna (Internal)";
-        ClientSize    = new Size(720, 620);
+        ClientSize    = new Size(720, 780);
         StartPosition = FormStartPosition.CenterScreen;
         Font          = new Font("Segoe UI", 9F);
         BackColor     = Color.White;
@@ -124,7 +135,69 @@ public sealed class MainForm : Form
         _btnGenerateKey.Font     = new Font("Segoe UI", 8.5F);
         _btnGenerateKey.Click   += GenerateKey_Click;
         Controls.Add(_btnGenerateKey);
-        y += 50;
+        y += 40;
+
+        // ── V2 edition claims block ──────────────────────────────────────
+        // Defaulted to PT TTS Custom + panel-electrical + never expire so
+        // a one-click workflow keeps working. Tick the checkbox to emit V2.
+        _chkV2Claims.Text     = "Sertakan klaim edisi (V2 license — multi-edition launch)";
+        _chkV2Claims.Location = new Point(20, y);
+        _chkV2Claims.Size     = new Size(680, 22);
+        _chkV2Claims.Font     = new Font("Segoe UI Semibold", 9F);
+        _chkV2Claims.Checked  = false;  // legacy V1 by default — TTS admin keeps single-click flow
+        _chkV2Claims.CheckedChanged += (s, e) => RefreshV2Visibility();
+        Controls.Add(_chkV2Claims);
+        y += 25;
+
+        AddLabel("Edition Tier", y, LBL_W);
+        _cmbTier.Location = new Point(FIELD_X, y);
+        _cmbTier.Size     = new Size(FIELD_W, 28);
+        _cmbTier.DropDownStyle = ComboBoxStyle.DropDownList;
+        _cmbTier.Items.AddRange(new object[]
+        {
+            "custom",
+            "generic-free",
+            "generic-basic",
+            "generic-pro",
+            "generic-business",
+            "lifetime-premium"
+        });
+        _cmbTier.SelectedIndex = 0;   // Custom default for PT TTS workflow
+        Controls.Add(_cmbTier);
+        y += 35;
+
+        AddLabel("Industry", y, LBL_W);
+        _txtIndustry.Location = new Point(FIELD_X, y);
+        _txtIndustry.Size     = new Size(FIELD_W, 28);
+        _txtIndustry.Text     = "panel-electrical";
+        Controls.Add(_txtIndustry);
+        y += 35;
+
+        AddLabel("Edition ID", y, LBL_W);
+        _txtEditionId.Location = new Point(FIELD_X, y);
+        _txtEditionId.Size     = new Size(FIELD_W, 28);
+        _txtEditionId.Text     = "custom-tts-panel-v1";
+        Controls.Add(_txtEditionId);
+        y += 35;
+
+        AddLabel("Expires", y, LBL_W);
+        _chkExpires.Text     = "Expire at";
+        _chkExpires.Location = new Point(FIELD_X, y + 4);
+        _chkExpires.Size     = new Size(80, 22);
+        _chkExpires.Checked  = false;  // never-expire default = PT TTS perpetual
+        _chkExpires.CheckedChanged += (s, e) => _dtpExpires.Enabled = _chkExpires.Checked;
+        Controls.Add(_chkExpires);
+
+        _dtpExpires.Location = new Point(FIELD_X + 90, y);
+        _dtpExpires.Size     = new Size(FIELD_W - 90, 28);
+        _dtpExpires.Format   = DateTimePickerFormat.Custom;
+        _dtpExpires.CustomFormat = "yyyy-MM-dd";
+        _dtpExpires.Value    = DateTime.Today.AddYears(1);
+        _dtpExpires.Enabled  = false;
+        Controls.Add(_dtpExpires);
+        y += 45;
+
+        RefreshV2Visibility();
 
         // ── Issue button ────────────────────────────────────────────────
         _btnIssue.Text      = "⚡  GENERATE LICENSE";
@@ -290,10 +363,32 @@ public sealed class MainForm : Form
 
         try
         {
-            var result = LicenseIssuer.Issue(
-                _txtFingerprint.Text,
-                _txtCustomerName.Text,
-                _txtKeyPath.Text);
+            LicenseIssuer.IssueResult result;
+            if (_chkV2Claims.Checked)
+            {
+                var spec = new LicenseIssuer.EditionTierSpec(
+                    EditionId: _txtEditionId.Text.Trim(),
+                    Tier:      _cmbTier.SelectedItem?.ToString() ?? "custom",
+                    Industry:  _txtIndustry.Text.Trim(),
+                    ExpiresAtUtc: _chkExpires.Checked
+                        ? DateTime.SpecifyKind(_dtpExpires.Value.Date, DateTimeKind.Utc)
+                        : null,
+                    Features: new EditionFeatures(
+                        WatermarkOutput: false,
+                        AllowBrandingOverride: false,
+                        AllowMarketplacePacks: false,
+                        MaxEstimationsPerMonth: 0,
+                        MaxConcurrentSeats: 999,
+                        RequiresOnlineActivation: false));
+
+                result = LicenseIssuer.Issue(
+                    _txtFingerprint.Text, _txtCustomerName.Text, spec, _txtKeyPath.Text);
+            }
+            else
+            {
+                result = LicenseIssuer.Issue(
+                    _txtFingerprint.Text, _txtCustomerName.Text, _txtKeyPath.Text);
+            }
 
             // Save the last-used key path for next launch
             _settings.PrivateKeyPath = _txtKeyPath.Text;
@@ -303,7 +398,7 @@ public sealed class MainForm : Form
             _btnCopy.Enabled = true;
             _btnSendWa.Enabled = true;
             SetStatus(
-                $"✓ License berhasil di-generate untuk '{result.CustomerName}' " +
+                $"✓ License V{result.FormatVersion} berhasil di-generate untuk '{result.CustomerName}' " +
                 $"(fingerprint {result.HardwareFingerprintDisplay}, {result.LicenseLength} karakter).",
                 Color.Green);
         }
@@ -313,6 +408,21 @@ public sealed class MainForm : Form
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             SetStatus("✗ " + ex.Message, Color.Red);
         }
+    }
+
+    /// <summary>
+    /// Show/hide the V2 claim fields based on the V2 checkbox state. V1 mode
+    /// keeps the form visually identical to pre-v1.3.0 so PT TTS admin
+    /// doesn't see new controls they don't need.
+    /// </summary>
+    private void RefreshV2Visibility()
+    {
+        bool v2 = _chkV2Claims.Checked;
+        _cmbTier.Enabled      = v2;
+        _txtIndustry.Enabled  = v2;
+        _txtEditionId.Enabled = v2;
+        _chkExpires.Enabled   = v2;
+        _dtpExpires.Enabled   = v2 && _chkExpires.Checked;
     }
 
     private void Copy_Click(object? sender, EventArgs e)

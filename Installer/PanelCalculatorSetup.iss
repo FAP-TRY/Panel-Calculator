@@ -4,7 +4,7 @@
 ; ================================================================
 
 #define MyAppName      "Kalkulator Panel Tritunggal Swarna"
-#define MyAppVersion   "1.2.9"
+#define MyAppVersion   "1.3.0"
 #define MyAppPublisher "Tritunggal Swarna"
 #define MyAppExeName   "PanelCalculator.WinForms.exe"
 ; Unique GUID -- identifies this app in Add/Remove Programs

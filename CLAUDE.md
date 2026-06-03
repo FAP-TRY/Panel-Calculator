@@ -12,7 +12,7 @@ Menggantikan proses manual menggunakan pricelist PDF.
 - **Teknologi:** C# .NET 8, WinForms, SQLite (EF Core), iText7
 - **Arsitektur:** Layered — Core / Data / WinForms
 - **Database:** `%AppData%\PanelCalculator\PanelCalculator.db` (per user, tidak di repo)
-- **Versi saat ini:** v1.2.9
+- **Versi saat ini:** v1.3.0
 
 ---
 
@@ -100,6 +100,15 @@ import sqlite3, csv
   - v1.2.7: HOTFIX — app crash saat klik checkbox di Riwayat Estimasi (CellContentClick→CommitEdit pattern bermasalah, ganti ke CurrentCellDirtyStateChanged + defer state update via BeginInvoke + try-catch wrapper di setiap event handler grid)
   - v1.2.8: PDF & Word penawaran SEKARANG match pixel template DOCX resmi PT TTS (letterhead jpeg + signature + cap stempel embedded; tabel ringkas 3-kolom No|Nama|Harga; Kondisi Penawaran bullet; multi-panel page 2+ Rincian Material tabel 6-kolom dengan section divider Box/Incoming/Outgoing). Default signer "Kuntjoro Handoko / Direktur / Bandung" (override via Settings).
   - v1.2.9: Visual revision PDF/Word — spasi 5mm di bawah banner header + di atas banner footer; blok Kepada/Telp/Up. dipindah ke kanan (sejajar edge kanan kolom "Harga Satuan"); signature block (Bandung/PT TTS/ttd/Kuntjoro/Direktur) sama right-aligned; Rincian Material polish: section divider Incoming/Outgoing/Lainnya beneran span 6 kolom dengan colspan, alternating row color, gap antar panel.
+  - v1.3.0: [INTERNAL — Phase 1 RAB Kit complete] Refactor 3-week branding
+    abstraction: codebase 100% multi-tenant ready (RabKit.Branding interface
+    + Panel.Branding TTS implementation + EditionContext + signed manifest).
+    Customer-visible change: title bar sekarang baca "v1.3.0 — Custom (TTS)".
+    Output PDF/Word/Excel byte-identical dengan v1.2.9 (verified via 5 golden
+    master tests). Backward compat: license existing TTS (V1 format) tetap
+    valid via fallback ke manifest editionId — customer existing tidak perlu
+    re-aktivasi. License format V2 baru (edition/tier/industry/expiry/features
+    bitmask) tersedia untuk multi-edition launch Phase 2.
 
 ### Kebijakan Versioning (sejak v1.2.6)
 

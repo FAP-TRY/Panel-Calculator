@@ -1,0 +1,16 @@
+{
+  "editionId": "custom-tts-panel-v1",
+  "editionTier": "custom",
+  "industry": "panel-electrical",
+  "bundledIndustryPackId": "tts-panel-listrik-2026.Q1",
+  "features": {
+    "watermarkOutput": false,
+    "allowBrandingOverride": false,
+    "allowMarketplacePacks": false,
+    "maxEstimationsPerMonth": 0,
+    "maxConcurrentSeats": 999,
+    "requiresOnlineActivation": false
+  },
+  "issuedAt": "2026-06-02T00:00:00Z",
+  "issuerKey": "D5Bk2OC+FFZdZqqtI86iFCiy1/pFRQLbkMBpVQ+ia6w="
+}

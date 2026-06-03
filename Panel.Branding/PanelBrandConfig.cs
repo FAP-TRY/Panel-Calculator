@@ -57,6 +57,18 @@ public sealed class PanelBrandConfig : IBrandConfig
     public byte[]? GetStampBytes()
         => ReadEmbedded("Panel.Branding.Assets.stamp.png");
 
+    // ── Edition manifest bundle ─────────────────────────────────────────
+    //
+    // Signed offline with the PT TTS issuer Ed25519 private key. Loaded at
+    // startup (Program.Main) via SignedManifestLoader.LoadAndVerifyFromBundle
+    // and registered in EditionContext. Tampering with the bundle (bit-flip
+    // in resource section, swap manifest from another edition) makes the
+    // signature verification fail and the app aborts at startup with a
+    // "manifest invalid" error.
+
+    public byte[]? GetEditionManifestBundle()
+        => ReadEmbedded("Panel.Branding.Assets.edition.manifest.bundle");
+
     // ── Security: machine-key derivation parameters ─────────────────────
     //
     // BOTH values here MUST stay byte-identical with the legacy
@@ -104,7 +116,7 @@ public sealed class PanelBrandConfig : IBrandConfig
 
     public string AppDisplayName        => "Kalkulator Panel Tritunggal Swarna";
     public string AppDataFolderName     => "PanelCalculator";
-    public string AppVersion            => "1.2.9";
+    public string AppVersion            => "1.3.0";
     public string EstimationNumberPattern => "EST-{0:yyyyMMdd}-{1:D3}";
 
     // ── Helpers ─────────────────────────────────────────────────────────

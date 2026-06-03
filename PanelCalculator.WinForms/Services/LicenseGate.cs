@@ -4,6 +4,7 @@ using PanelCalculator.Core.Security;
 using PanelCalculator.Data;
 using PanelCalculator.Data.Security;
 using PanelCalculator.WinForms.Forms;
+using RabKit.Branding;
 
 namespace PanelCalculator.WinForms.Services;
 
@@ -64,7 +65,15 @@ internal static class LicenseGate
             var fp = MachineKeyProvider.GetHardwareFingerprintBytes();
             var result = LicenseService.ValidateLicense(stored.SettingValue, fp);
             if (result.IsValid)
+            {
+                // W4: also seed EditionContext.CurrentLicense so the title bar
+                // and policy gates can read tier/edition info. Failure here is
+                // non-fatal — LicenseService already accepted the license, and
+                // an EditionMismatch / Expired would be a configuration bug
+                // we want to log not block the customer over.
+                TrySeedEditionContext(stored.SettingValue, fp, logWarning);
                 return Outcome.Pass;
+            }
 
             // Otherwise fall through to ActivationForm — the stored license
             // no longer matches this machine (hardware changed / DB cloned).
@@ -73,7 +82,62 @@ internal static class LicenseGate
         // 3. Block: show activation dialog.
         using var dlg = new ActivationForm(context);
         dlg.ShowDialog();
-        return dlg.ActivationSuccess ? Outcome.Pass : Outcome.UserCancelled;
+        if (!dlg.ActivationSuccess)
+            return Outcome.UserCancelled;
+
+        // After successful activation, seed EditionContext so the title bar
+        // tier label + downstream policy gates have the freshly-activated
+        // license metadata available. Re-read from DB (ActivationForm writes
+        // the license to Settings before closing).
+        var fresh = context.Settings.FirstOrDefault(s => s.SettingKey == LicenseSettings.LicenseKeySettingName);
+        if (fresh != null && !string.IsNullOrWhiteSpace(fresh.SettingValue))
+        {
+            var fpAfter = MachineKeyProvider.GetHardwareFingerprintBytes();
+            TrySeedEditionContext(fresh.SettingValue, fpAfter, logWarning);
+        }
+        return Outcome.Pass;
+    }
+
+    /// <summary>
+    /// W4: bridge LicenseService (which validates Ed25519 + hw fingerprint)
+    /// to EditionContext (which adds edition/tier/industry/expiry/manifest
+    /// cross-check). Splits the decode from the validate so both layers
+    /// can share the same bytes without double-work.
+    /// </summary>
+    private static void TrySeedEditionContext(string licenseKey, byte[] fingerprint, Action<string> logWarning)
+    {
+        try
+        {
+            if (!EditionContext.IsInitialized)
+            {
+                logWarning("EditionContext not initialized — skipping V2 claim seeding.");
+                return;
+            }
+
+            var decoded = LicenseDecoder.Decode(licenseKey);
+            var input = new DecodedLicenseInput(
+                Payload: decoded.Payload,
+                Signature: decoded.Signature,
+                FormatVersion: decoded.Version,
+                HardwareFingerprint: decoded.HardwareFingerprint,
+                CustomerName: decoded.CustomerName,
+                IssueDateUtc: decoded.IssueDateUtc,
+                EditionId: decoded.EditionId,
+                Tier: decoded.Tier,
+                Industry: decoded.Industry,
+                ExpiresAtUtc: decoded.ExpiresAtUtc,
+                Features: decoded.Features);
+
+            var ed = EditionContext.ValidateAndSetLicense(input, fingerprint);
+            if (!ed.IsValid)
+            {
+                logWarning($"EditionContext validation failed: {ed.Reason} — {ed.Detail}");
+            }
+        }
+        catch (Exception ex)
+        {
+            logWarning($"EditionContext seeding threw: {ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>

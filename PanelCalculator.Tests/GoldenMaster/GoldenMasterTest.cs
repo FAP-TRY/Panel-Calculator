@@ -36,9 +36,25 @@ namespace PanelCalculator.Tests.GoldenMaster;
 /// </para>
 /// </summary>
 [Trait("Category", "GoldenMaster")]
+[Collection("EditionContextSerial")]   // share singleton context with BrandContextWiringTest
 public class GoldenMasterTest
 {
     private static readonly Dictionary<string, string> EmptySettings = new();
+
+    static GoldenMasterTest()
+    {
+        // Ensure BrandContext is wired with the production PT TTS values
+        // even when the test runner picks this file in isolation (e.g.
+        // `dotnet test --filter "Category=GoldenMaster"`). Without this,
+        // the export services would throw "BrandContext.Initialize() must
+        // be called" when no other test has run first.
+        if (!RabKit.Branding.BrandContext.IsInitialized)
+        {
+            RabKit.Branding.BrandContext.Initialize(
+                new PanelBranding.PanelBrandConfig(),
+                new PanelBranding.PanelIndustryProfile());
+        }
+    }
 
     /// <summary>True when the suite should overwrite the baseline file
     /// instead of asserting hashes match. Wired through the

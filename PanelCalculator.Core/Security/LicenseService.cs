@@ -5,6 +5,59 @@ using RabKit.Branding;
 namespace PanelCalculator.Core.Security;
 
 /// <summary>
+/// Public projection of <c>LicensePayload.DecodedLicense</c> for callers
+/// outside PanelCalculator.Core (e.g. LicenseGate in WinForms project)
+/// that need the V2 edition claims without InternalsVisibleTo.
+///
+/// <para>
+/// Field-for-field equivalent of the internal record; carries enough
+/// bytes for <see cref="RabKit.Branding.EditionContext.ValidateAndSetLicense"/>
+/// to re-verify the signature and apply cross-checks.
+/// </para>
+/// </summary>
+public sealed record PublicDecodedLicense(
+    byte[]   Payload,
+    byte[]   Signature,
+    int      Version,
+    byte[]   HardwareFingerprint,
+    string   CustomerName,
+    DateTime IssueDateUtc,
+    string   EditionId,
+    string   Tier,
+    string   Industry,
+    DateTime? ExpiresAtUtc,
+    EditionFeatures Features);
+
+/// <summary>
+/// Public decoder facade — exposes <see cref="LicensePayload.Decode"/> to
+/// callers outside the assembly without leaking the internal record.
+/// </summary>
+public static class LicenseDecoder
+{
+    /// <summary>
+    /// Decode a Base32-grouped license key into its component fields.
+    /// Auto-detects V1 vs V2 format; V1 returns empty edition strings
+    /// (caller applies manifest fallback via EditionContext).
+    /// </summary>
+    public static PublicDecodedLicense Decode(string licenseKey)
+    {
+        var raw = LicensePayload.Decode(licenseKey);
+        return new PublicDecodedLicense(
+            Payload: raw.Payload,
+            Signature: raw.Signature,
+            Version: raw.Version,
+            HardwareFingerprint: raw.HardwareFingerprint,
+            CustomerName: raw.CustomerName,
+            IssueDateUtc: raw.IssueDateUtc,
+            EditionId: raw.EditionId,
+            Tier: raw.Tier,
+            Industry: raw.Industry,
+            ExpiresAtUtc: raw.ExpiresAtUtc,
+            Features: raw.Features);
+    }
+}
+
+/// <summary>
 /// License validation entry-point. The app calls
 /// <see cref="ValidateLicense(string, byte[])"/> at startup; the admin /
 /// support workflow uses the same code via the keygen tool to verify a

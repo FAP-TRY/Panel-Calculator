@@ -159,4 +159,20 @@ public interface IBrandConfig
     /// slot 1 = same-day sequence number.
     /// </summary>
     string EstimationNumberPattern { get; }
+
+    // ── Edition manifest bundle (W4 / v1.3.0+) ──────────────────────────
+
+    /// <summary>
+    /// Returns the signed <c>edition.manifest.bundle</c> bytes embedded in
+    /// this brand pack, or <c>null</c> when no manifest is bundled (dev
+    /// builds / unit tests).
+    ///
+    /// <para>
+    /// Bundle layout: 4-byte BE length + UTF-8 JSON manifest + 64-byte
+    /// Ed25519 signature. Decoded via
+    /// <see cref="SignedManifestLoader.LoadAndVerifyFromBundle"/> in
+    /// Program.Main; result is bound into <see cref="EditionContext"/>.
+    /// </para>
+    /// </summary>
+    byte[]? GetEditionManifestBundle();
 }

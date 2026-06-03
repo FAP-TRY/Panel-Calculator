@@ -50,7 +50,13 @@ public class ShellForm : Form
 
         // Version tampil di title bar supaya user/support gampang verify
         // versi instalasi mereka — match lblVersion di top bar + About dialog.
-        Text          = $"{BrandContext.Current.AppDisplayName} — v{UpdateService.AppVersion}";
+        // W4: tambah tier + brand short-name supaya support langsung tahu
+        // edition customer ("Custom (TTS)" vs "Pro (RAB Cepat)") tanpa
+        // tanya — relevan begitu multi-edition launch (Phase 2).
+        var tier = EditionContext.IsInitialized
+            ? EditionContext.GetTierDisplayName()
+            : "Custom";
+        Text = $"{BrandContext.Current.AppDisplayName} — v{UpdateService.AppVersion} — {tier} ({BrandContext.Current.CompanyShortName})";
         MinimumSize   = new Size(1150, 700);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor     = AppTheme.Background;

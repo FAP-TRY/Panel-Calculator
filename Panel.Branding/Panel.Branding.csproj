@@ -34,6 +34,13 @@
     <EmbeddedResource Include="Assets\letterhead.jpg" />
     <EmbeddedResource Include="Assets\signature.png" />
     <EmbeddedResource Include="Assets\stamp.png" />
+    <!--
+      Signed edition manifest (4-byte BE length + JSON + 64-byte Ed25519
+      signature). Generated offline via Tools\sign-edition-manifest.ps1.
+      The signing private key never enters the repo. Loaded at startup via
+      SignedManifestLoader.LoadAndVerifyFromBundle in Program.Main.
+    -->
+    <EmbeddedResource Include="Assets\edition.manifest.bundle" />
   </ItemGroup>
 
   <ItemGroup>
